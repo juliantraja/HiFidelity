@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>HiFidelity Updates</title>
+    <link>https://juliantraja.github.io/HiFidelity/appcast.xml</link>
+    <description>Release feed for HiFidelity</description>
+    <language>en</language>
+
+    <item>
+      <title>Version 1.0.9</title>
+      <pubDate>Wed, 31 Dec 2025 12:40:00 +0000</pubDate>
+      <enclosure
+        url="https://juliantraja.github.io/HiFidelity/HiFidelity-1.0.9-109.zip"
+        sparkle:edSignature="ioItu70vPtFfq1S4FQdVXPU/RbnDGkGLtfwgRfV/NMSRzSjE65bB7VUsKykOs62BhrWv2HUG3Ud7Q0wdqzBdCQ=="
+        length="14619300"
+        type="application/octet-stream"
+        sparkle:version="109"
+        sparkle:shortVersionString="1.0.9" />
+    </item>
+
+  </channel>
+</rss>
