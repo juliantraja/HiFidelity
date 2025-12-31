@@ -18,23 +18,41 @@ struct LibrarySettings: View {
     @State private var showRemoveAllConfirmation = false
     @State private var isLoading = false
     @AppStorage("enableFolderWatcher") private var enableFolderWatcher = true
-    
+    @AppStorage("enableBPMDetection") private var enableBPMDetection = true
+    @AppStorage("enableKeyDetection") private var enableKeyDetection = true
+    @AppStorage("keyDisplayFormat") private var keyDisplayFormat = KeyDisplayFormat.note.rawValue
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
             header
-            
+
             Divider()
-            
+
             // Import progress section
             if databaseManager.isImporting {
                 importProgressSection
                 Divider()
             }
-            
+
+            // BPM Detection section
+            bpmDetectionSection
+
+            Divider()
+
+            // Musical Key Detection section
+            musicalKeyDetectionSection
+
+            Divider()
+
+            // Musical Key Display section
+            musicalKeyDisplaySection
+
+            Divider()
+
             // Folder monitoring control
             folderMonitoringSection
-            
+
             Divider()
             
             if isLoading {
@@ -170,8 +188,127 @@ struct LibrarySettings: View {
         .background(theme.currentTheme.primaryColor.opacity(0.05))
     }
     
+    // MARK: - BPM Detection Section
+
+    private var bpmDetectionSection: some View {
+        HStack(spacing: 12) {
+            // Icon
+            Image(systemName: "metronome")
+                .font(.system(size: 16))
+                .foregroundColor(enableBPMDetection ? theme.currentTheme.primaryColor : .secondary)
+                .frame(width: 24)
+            
+            // Info
+            VStack(alignment: .leading, spacing: 2) {
+                Text("BPM Detection")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+                
+                Text("Enable BPM analysis during library import and re-analyze")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            // Toggle
+            Toggle("", isOn: $enableBPMDetection)
+                .toggleStyle(SwitchToggleStyle())
+                .labelsHidden()
+                .onChange(of: enableBPMDetection) { _, newValue in
+                    NotificationManager.shared.addMessage(
+                        .info,
+                        newValue ? "BPM Detection active" : "BPM Detection stopped"
+                    )
+                }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    // MARK: - Musical Key Detection Section
+
+    private var musicalKeyDetectionSection: some View {
+        HStack(spacing: 12) {
+            // Icon
+            Image(systemName: "music.note")
+                .font(.system(size: 16))
+                .foregroundColor(enableKeyDetection ? theme.currentTheme.primaryColor : .secondary)
+                .frame(width: 24)
+            
+            // Info
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Musical Key Detection")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+                
+                Text("Enable Key analysis during library import and re-analyze")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            // Toggle
+            Toggle("", isOn: $enableKeyDetection)
+                .toggleStyle(SwitchToggleStyle())
+                .labelsHidden()
+                .onChange(of: enableKeyDetection) { _, newValue in
+                    NotificationManager.shared.addMessage(
+                        .info,
+                        newValue ? "Musical Key Detection active" : "Musical Key Detection stopped"
+                    )
+                }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    // MARK: - Musical Key Display Section
+
+    private var musicalKeyDisplaySection: some View {
+        HStack(spacing: 12) {
+            // Icon
+            Image(systemName: "eye")
+                .font(.system(size: 16))
+                .foregroundColor(theme.currentTheme.primaryColor)
+                .frame(width: 24)
+
+            // Info
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Musical Key Display")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Text("Choose how musical keys are displayed")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            // Picker
+            Picker("", selection: $keyDisplayFormat) {
+                ForEach(KeyDisplayFormat.allCases, id: \.rawValue) { format in
+                    Text(format.rawValue).tag(format.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 120)
+            .onChange(of: keyDisplayFormat) { _, newValue in
+                // Post notification to refresh the track table
+                NotificationCenter.default.post(name: .refreshLibraryData, object: nil)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
     // MARK: - Folder Monitoring Section
-    
+
     private var folderMonitoringSection: some View {
         HStack(spacing: 12) {
             // Icon

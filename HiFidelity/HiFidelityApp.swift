@@ -80,12 +80,12 @@ struct HiFidelityApp: App {
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
             
-            // Set toolbar background for better contrast
-            window.toolbar?.insertItem(withItemIdentifier: .init("separator"), at: 0)
-            
-            // Configure toolbar appearance
-            if let toolbar = window.toolbar {
-                toolbar.displayMode = .iconOnly
+            // Configure toolbar appearance (only if toolbar exists and window is properly initialized)
+            // Avoid accessing toolbar on windows with NSNextStepFrame to prevent errors
+            DispatchQueue.main.async {
+                if let toolbar = window.toolbar, window.isVisible {
+                    toolbar.displayMode = .iconOnly
+                }
             }
         }
     }
@@ -144,10 +144,9 @@ struct HiFidelityApp: App {
         CommandGroup(after: .toolbar) {
             miniPlayerCommand()
             audioEffects()
-//            visualEffects()
         }
     }
-    
+
     private func checkForUpdatesMenuItem() -> some View {
         Button {
             if let updater = appDelegate.updaterController?.updater {
@@ -157,17 +156,6 @@ struct HiFidelityApp: App {
             Text("Check for Updates...")
         }
     }
-    
-    
-    
-//    private func visualEffects() -> some View {
-//        Menu("Visualizer") {
-//            Button("Toggle Visualizer") {
-//                openWindow(id: "visualizer")
-//            }
-//            .keyboardShortcut("v", modifiers: .command)
-//        }
-//    }
     
     private func miniPlayerCommand() -> some View {
         Button {

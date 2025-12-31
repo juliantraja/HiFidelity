@@ -94,24 +94,20 @@ struct SettingsView: View {
             case .appearance:
                 ScrollView {
                     AppearanceSettings(theme: theme)
-                        .padding(24)
                 }
             case .audio:
                 ScrollView {
                     AudioSettingsView()
-                        .padding(24)
                 }
             case .library:
-                    LibrarySettings()
+                LibrarySettings()
             case .advanced:
                 ScrollView {
                     AdvancedSettings()
-                        .padding(24)
                 }
             case .about:
                 ScrollView {
                     AboutMenuView()
-                        .padding(24)
                 }
             }
         }

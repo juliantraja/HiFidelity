@@ -114,6 +114,11 @@ struct AlbumsTabView: View {
                 await loadAlbums()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .libraryDataDidChange)) { _ in
+            Task {
+                await loadAlbums()
+            }
+        }
         .onChange(of: selectedSort) { _, newSort in
             sortOptionId = newSort.id
             sortAscending = newSort.ascending
@@ -173,12 +178,29 @@ struct AlbumsTabView: View {
     }
     
     private func loadAlbums() async {
-        isLoading = true
-        defer { isLoading = false }
-        
+        // Use smooth animation to prevent UI blinking
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isLoading = true
+            }
+        }
+
+        defer {
+            Task { @MainActor in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isLoading = false
+                }
+            }
+        }
+
         do {
-            albums = try await databaseManager.getAllAlbums()
-            applyFiltersAndSort()
+            let newAlbums = try await databaseManager.getAllAlbums()
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    albums = newAlbums
+                    applyFiltersAndSort()
+                }
+            }
             
             // Preload artwork for initially visible albums
             Task {
@@ -381,4 +403,3 @@ private struct AlbumOptionsDropdown: View {
         .buttonStyle(.plain)
     }
 }
-

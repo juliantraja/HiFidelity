@@ -238,6 +238,57 @@ extension DatabaseManager {
             arguments: [trackCount, genreId]
         )
     }
+
+    /// Delete a genre if it no longer has any tracks
+    /// - Parameters:
+    ///   - db: Database connection
+    ///   - genreId: Genre ID to check
+    static func deleteGenreIfOrphan(in db: Database, genreId: Int64?) throws {
+        guard let genreId = genreId else { return }
+        let remaining = try Track
+            .filter(Track.Columns.genreId == genreId)
+            .fetchCount(db)
+        if remaining == 0 {
+            try Genre
+                .filter(Genre.Columns.id == genreId)
+                .deleteAll(db)
+            Logger.info("Deleted orphaned genre ID: \(genreId)")
+        }
+    }
+
+    /// Delete an album if it no longer has any tracks
+    /// - Parameters:
+    ///   - db: Database connection
+    ///   - albumId: Album ID to check
+    static func deleteAlbumIfOrphan(in db: Database, albumId: Int64?) throws {
+        guard let albumId = albumId else { return }
+        let remaining = try Track
+            .filter(Track.Columns.albumId == albumId)
+            .fetchCount(db)
+        if remaining == 0 {
+            try Album
+                .filter(Album.Columns.id == albumId)
+                .deleteAll(db)
+            Logger.info("Deleted orphaned album ID: \(albumId)")
+        }
+    }
+
+    /// Delete an artist if it no longer has any tracks
+    /// - Parameters:
+    ///   - db: Database connection
+    ///   - artistId: Artist ID to check
+    static func deleteArtistIfOrphan(in db: Database, artistId: Int64?) throws {
+        guard let artistId = artistId else { return }
+        let remaining = try Track
+            .filter(Track.Columns.artistId == artistId)
+            .fetchCount(db)
+        if remaining == 0 {
+            try Artist
+                .filter(Artist.Columns.id == artistId)
+                .deleteAll(db)
+            Logger.info("Deleted orphaned artist ID: \(artistId)")
+        }
+    }
     
     // MARK: - Batch Update
     
@@ -458,4 +509,3 @@ extension DatabaseManager {
         }
     }
 }
-

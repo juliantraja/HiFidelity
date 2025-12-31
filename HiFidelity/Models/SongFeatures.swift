@@ -122,6 +122,9 @@ struct SongFeatures: Codable, FetchableRecord, MutablePersistableRecord {
     /// Mode (0 = minor, 1 = major)
     var mode: Int?
     
+    /// Camelot Wheel key notation (e.g., "5A", "8B") for DJ-style mixing
+    var camelotKey: String?
+    
     /// Time signature (3, 4, 5, etc.)
     var timeSignature: Int?
     
@@ -185,6 +188,7 @@ struct SongFeatures: Codable, FetchableRecord, MutablePersistableRecord {
         static let loudness = Column(CodingKeys.loudness)
         static let key = Column(CodingKeys.key)
         static let mode = Column(CodingKeys.mode)
+        static let camelotKey = Column(CodingKeys.camelotKey)
         static let timeSignature = Column(CodingKeys.timeSignature)
         static let mood = Column(CodingKeys.mood)
         static let spectralCentroid = Column(CodingKeys.spectralCentroid)
@@ -213,6 +217,7 @@ struct SongFeatures: Codable, FetchableRecord, MutablePersistableRecord {
         case loudness
         case key
         case mode
+        case camelotKey = "camelot_key"
         case timeSignature = "time_signature"
         case mood
         case spectralCentroid = "spectral_centroid"
@@ -243,6 +248,7 @@ struct SongFeatures: Codable, FetchableRecord, MutablePersistableRecord {
         loudness: Double? = nil,
         key: Int? = nil,
         mode: Int? = nil,
+        camelotKey: String? = nil,
         timeSignature: Int? = nil,
         mood: Mood? = nil,
         spectralCentroid: Double? = nil,
@@ -269,6 +275,7 @@ struct SongFeatures: Codable, FetchableRecord, MutablePersistableRecord {
         self.loudness = loudness
         self.key = key
         self.mode = mode
+        self.camelotKey = camelotKey
         self.timeSignature = timeSignature
         self.mood = mood
         self.spectralCentroid = spectralCentroid
@@ -363,6 +370,33 @@ extension SongFeatures {
         )
     }
     
+    /// Automatically derive and set Camelot key from key and mode
+    mutating func deriveCamelotKey() {
+        guard let key = key, let mode = mode else {
+            camelotKey = nil
+            return
+        }
+        
+        if let camelot = CamelotKey(key: key, mode: mode) {
+            camelotKey = camelot.notation
+        } else {
+            camelotKey = nil
+        }
+    }
+    
+    /// Get Camelot key, deriving it if not set
+    func getCamelotKey() -> String? {
+        if let existing = camelotKey {
+            return existing
+        }
+        
+        guard let key = key, let mode = mode else {
+            return nil
+        }
+        
+        return CamelotKey(key: key, mode: mode)?.notation
+    }
+    
     /// Get mood, deriving it if not set
     func getMood() -> Mood {
         if let existingMood = mood {
@@ -401,6 +435,7 @@ extension SongFeatures {
         try container.encodeIfPresent(loudness, forKey: .loudness)
         try container.encodeIfPresent(key, forKey: .key)
         try container.encodeIfPresent(mode, forKey: .mode)
+        try container.encodeIfPresent(camelotKey, forKey: .camelotKey)
         try container.encodeIfPresent(timeSignature, forKey: .timeSignature)
         try container.encodeIfPresent(mood, forKey: .mood)
         try container.encodeIfPresent(spectralCentroid, forKey: .spectralCentroid)
@@ -438,6 +473,7 @@ extension SongFeatures {
         loudness = try container.decodeIfPresent(Double.self, forKey: .loudness)
         key = try container.decodeIfPresent(Int.self, forKey: .key)
         mode = try container.decodeIfPresent(Int.self, forKey: .mode)
+        camelotKey = try container.decodeIfPresent(String.self, forKey: .camelotKey)
         timeSignature = try container.decodeIfPresent(Int.self, forKey: .timeSignature)
         mood = try container.decodeIfPresent(Mood.self, forKey: .mood)
         spectralCentroid = try container.decodeIfPresent(Double.self, forKey: .spectralCentroid)

@@ -17,9 +17,11 @@ struct MiniPlayerView: View {
     @State private var expandedPanel: MiniPlayerPanel? = nil
     @State private var isHoveringArtwork = false
     @State private var showVolumePopover = false
+    @State private var showRemainingTime = true // true = remaining, false = total
     @AppStorage("miniPlayerShowArtwork") private var showArtwork = true
     @AppStorage("miniPlayerTransparent") private var isTransparent = true
     @AppStorage("miniPlayerFloatable") private var isFloatable = true
+    @State private var artworkRefreshToken = UUID()
     
     var body: some View {
         VStack(spacing: 0) {
@@ -41,7 +43,7 @@ struct MiniPlayerView: View {
                 }
             }
         }
-        .frame(width: showArtwork ? 440 : 360)
+        .frame(width: showArtwork ? 460 : 360)
         .background(
             Group {
                 if isTransparent {
@@ -61,6 +63,12 @@ struct MiniPlayerView: View {
         }
         .onChange(of: isFloatable) { _, _ in
             updateWindowLevel()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .libraryDataDidChange)) { notification in
+            guard let trackId = notification.userInfo?["trackId"] as? Int64,
+                  let currentId = playback.currentTrack?.trackId,
+                  currentId == trackId else { return }
+            artworkRefreshToken = UUID() // Force artwork view refresh for updated cover art
         }
     }
     
@@ -145,45 +153,30 @@ struct MiniPlayerView: View {
             controlsSection(track: track)
         }
         .frame(height: 140)
+
     }
     
     // MARK: - Track Info Header
     
     private func trackInfoHeader(track: Track) -> some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                
-                HStack(spacing: 4) {
-                    Text(track.artist)
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                    
-                    if !track.album.isEmpty {
-                        Text("•")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary.opacity(0.5))
-                        
-                        Text(track.album)
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-            
+            ScrollingTextPair(
+                title: track.title,
+                subtitle: !track.album.isEmpty ? "\(track.artist) • \(track.album)" : track.artist,
+                titleFont: .system(size: 13, weight: .semibold),
+                subtitleFont: .system(size: 11),
+                titleColor: .primary,
+                subtitleColor: .secondary,
+                spacing: 2
+            )
+            .frame(height: 30)  // 15 + 2 + 13
+            .id("\(track.id)-\(track.title)-\(track.artist)")  // Force recreation on track change
+
             Spacer()
-            
-            // Time display
-            Text("-\(formatRemainingTime())")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-                .monospacedDigit()
-            
+
+            // Time display - clickable to toggle format
+            timeDisplayButton
+
             // Close button
             Button(action: {
                 MiniPlayerWindowController.hide()
@@ -197,7 +190,8 @@ struct MiniPlayerView: View {
             .help("Close Mini Player")
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.top, 20)
+        .padding(.bottom, 12)
         .background(Color.black.opacity(0.05))
     }
     
@@ -205,7 +199,8 @@ struct MiniPlayerView: View {
     
     private func artworkSection(track: Track) -> some View {
         ZStack {
-            TrackArtworkView(track: track, size: 140, cornerRadius: 0)
+            TrackArtworkView(track: track, size: 140, cornerRadius: 12)
+                .id("mini-artwork-\(track.trackId ?? 0)-\(artworkRefreshToken)")
             
             // Play/Pause overlay on hover
             if isHoveringArtwork {
@@ -235,13 +230,13 @@ struct MiniPlayerView: View {
     // MARK: - Controls Section
     
     private func controlsSection(track: Track) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 4) {
             // Track info header
             trackInfoHeader(track: track)
-            
+
             // Progress bar
             progressBar
-            
+
             // Playback controls
             HStack(spacing: 0) {
                 // Left: Volume
@@ -264,31 +259,13 @@ struct MiniPlayerView: View {
     }
     
     // MARK: - Progress Bar
-    
+
     private var progressBar: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                // Track background
-                Rectangle()
-                    .fill(Color.white.opacity(0.2))
-                    .frame(height: 4)
-                
-                // Progress fill
-                Rectangle()
-                    .fill(Color.white.opacity(0.6))
-                    .frame(width: geometry.size.width * playback.progress, height: 4)
-            }
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let progress = value.location.x / geometry.size.width
-                        playback.setProgress(max(0, min(1, progress)))
-                    }
-            )
-        }
-        .frame(height: 4)
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
+        WaveformSeekBar(isCompact: true, targetSampleCount: 91)
+            .frame(height: 36)
+            .padding(.leading, 16)
+            .padding(.trailing, 22)
+            .padding(.top, 0)
     }
     
     // MARK: - Volume Section
@@ -468,27 +445,15 @@ struct MiniPlayerView: View {
             Button(action: {
                 expandedPanel = expandedPanel == .queue ? nil : .queue
             }) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "list.bullet")
-                        .font(.system(size: 16))
-                        .foregroundColor(expandedPanel == .queue ? theme.currentTheme.primaryColor : .secondary)
-                        .frame(width: 32, height: 32)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(expandedPanel == .queue ? theme.currentTheme.primaryColor.opacity(0.15) : Color.clear)
-                        )
-                        .contentShape(Rectangle())
-                    
-                    if playback.queue.count > 0 {
-                        Text("\(playback.queue.count)")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 3)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(Color.red))
-                            .offset(x: 4, y: -4)
-                    }
-                }
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 16))
+                    .foregroundColor(expandedPanel == .queue ? theme.currentTheme.primaryColor : .secondary)
+                    .frame(width: 32, height: 32)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(expandedPanel == .queue ? theme.currentTheme.primaryColor.opacity(0.15) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -557,11 +522,33 @@ struct MiniPlayerView: View {
         }
     }
     
+    // MARK: - Time Display Button
+
+    private var timeDisplayButton: some View {
+        Button(action: {
+            showRemainingTime.toggle()
+        }) {
+            Text(showRemainingTime ? "-\(formatRemainingTime())" : formatTotalTime())
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary)
+                .monospacedDigit()
+                .frame(minWidth: 35, alignment: .trailing)
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Helper Methods
-    
+
     private func formatRemainingTime() -> String {
-        let remaining = playback.duration - playback.currentTime
+        let remaining = playback.adjustedDurationForPitch - playback.currentTime
         let totalSeconds = Int(remaining)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func formatTotalTime() -> String {
+        let totalSeconds = Int(playback.adjustedDurationForPitch)
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
@@ -687,4 +674,3 @@ struct VolumePopoverView: View {
     MiniPlayerView()
         .frame(width: 566, height: 208)
 }
-

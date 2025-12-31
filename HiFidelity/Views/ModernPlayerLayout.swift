@@ -97,9 +97,9 @@ struct ModernPlayerLayout: View {
                     showRightPanel = true
                     rightPanelTab = .trackInfo
                 } else {
-                    // Close the right panel when track info is hidden
+                    // When track info is hidden, switch back to queue instead of closing panel
                     if rightPanelTab == .trackInfo {
-                        showRightPanel = false
+                        rightPanelTab = .queue
                     }
                 }
             }
@@ -119,7 +119,9 @@ struct ModernPlayerLayout: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowTrackInfo"))) { notification in
             // Show track info panel when requested from context menu
             if let track = notification.object as? Track {
-                trackInfoManager.show(track: track)
+                let allTracks = (notification.userInfo?["allTracks"] as? [Track]) ?? []
+                let currentIndex = (notification.userInfo?["currentIndex"] as? Int) ?? 0
+                trackInfoManager.show(track: track, allTracks: allTracks, currentIndex: currentIndex)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .navigateToEntity)) { notification in

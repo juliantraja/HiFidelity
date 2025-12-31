@@ -16,7 +16,7 @@ extension DatabaseManager {
     func saveSongFeatures(_ features: SongFeatures) async throws {
         try await dbQueue.write { db in
             var mutableFeatures = features
-            try mutableFeatures.save(db)
+            try mutableFeatures.insert(db, onConflict: .replace)
         }
         Logger.debug("Saved song features for track ID: \(features.trackId)")
     }
@@ -275,6 +275,219 @@ extension DatabaseManager {
                 .filter(featureIds.contains(Track.Columns.trackId))
                 .fetchAll(db)
         }
+    }
+    
+    // MARK: - Similarity Search by Key and BPM
+    
+    /// Find tracks with similar Camelot key (compatible for mixing)
+    /// - Parameters:
+    ///   - trackId: Source track ID
+    ///   - limit: Maximum number of tracks to return
+    ///   - includeCompatible: If true, includes adjacent and relative keys
+    /// - Returns: Array of tracks with compatible keys
+    func findTracksByCamelotKey(
+        toTrackId trackId: Int64,
+        limit: Int = 50,
+        includeCompatible: Bool = true
+    ) async throws -> [Track] {
+        // Get source track features
+        guard let sourceFeatures = try await getSongFeatures(forTrackId: trackId),
+              let sourceCamelotKey = sourceFeatures.camelotKey,
+              let sourceKey = CamelotKey(notation: sourceCamelotKey) else {
+            Logger.warning("No Camelot key found for track ID: \(trackId)")
+            return []
+        }
+        
+        // Get compatible keys
+        let searchKeys: [String]
+        if includeCompatible {
+            searchKeys = sourceKey.compatibleKeys.map { $0.notation }
+        } else {
+            searchKeys = [sourceCamelotKey]
+        }
+        
+        // Find tracks with matching keys
+        let trackIds = try await dbQueue.read { db in
+            try SongFeatures
+                .filter(searchKeys.contains(SongFeatures.Columns.camelotKey))
+                .filter(SongFeatures.Columns.trackId != trackId)
+                .select(SongFeatures.Columns.trackId)
+                .fetchSet(db) as Set<Int64>
+        }
+        
+        // Fetch tracks
+        let tracks = try await dbQueue.read { db in
+            try Track
+                .filter(trackIds.contains(Track.Columns.trackId))
+                .limit(limit)
+                .fetchAll(db)
+        }
+        
+        return tracks
+    }
+    
+    /// Find tracks with similar BPM (within a tolerance range)
+    /// - Parameters:
+    ///   - trackId: Source track ID
+    ///   - bpmTolerance: BPM difference tolerance (default ±5 BPM)
+    ///   - limit: Maximum number of tracks to return
+    /// - Returns: Array of tracks with similar BPM
+    func findTracksByBPM(
+        toTrackId trackId: Int64,
+        bpmTolerance: Double = 5.0,
+        limit: Int = 50
+    ) async throws -> [Track] {
+        // Get source track features or BPM from track metadata
+        var sourceBPM: Double?
+        
+        // Try to get from song_features first
+        if let sourceFeatures = try await getSongFeatures(forTrackId: trackId),
+           let tempo = sourceFeatures.tempo {
+            sourceBPM = tempo
+        } else {
+            // Fall back to track's bpm field
+            let sourceTrack = try await dbQueue.read { db in
+                try Track.filter(Track.Columns.trackId == trackId).fetchOne(db)
+            }
+            if let bpm = sourceTrack?.bpm {
+                sourceBPM = Double(bpm)
+            }
+        }
+        
+        guard let bpm = sourceBPM else {
+            Logger.warning("No BPM found for track ID: \(trackId)")
+            return []
+        }
+        
+        let minBPM = bpm - bpmTolerance
+        let maxBPM = bpm + bpmTolerance
+        
+        // Find tracks with similar BPM
+        let trackIds = try await dbQueue.read { db -> Set<Int64> in
+            var ids: Set<Int64> = []
+            
+            // Check song_features tempo
+            let featureIds = try SongFeatures
+                .filter(SongFeatures.Columns.tempo >= minBPM)
+                .filter(SongFeatures.Columns.tempo <= maxBPM)
+                .filter(SongFeatures.Columns.trackId != trackId)
+                .select(SongFeatures.Columns.trackId)
+                .fetchSet(db) as Set<Int64>
+            ids.formUnion(featureIds)
+            
+            // Also check tracks.bpm for tracks without features
+            let trackBpmIds = try Track
+                .filter(Track.Columns.bpm >= Int(minBPM))
+                .filter(Track.Columns.bpm <= Int(maxBPM))
+                .filter(Track.Columns.trackId != trackId)
+                .select(Track.Columns.trackId)
+                .fetchSet(db) as Set<Int64>
+            ids.formUnion(trackBpmIds)
+            
+            return ids
+        }
+        
+        // Fetch tracks
+        let tracks = try await dbQueue.read { db in
+            try Track
+                .filter(trackIds.contains(Track.Columns.trackId))
+                .limit(limit)
+                .fetchAll(db)
+        }
+        
+        return tracks
+    }
+    
+    /// Find tracks similar by both key and BPM
+    /// - Parameters:
+    ///   - trackId: Source track ID
+    ///   - bpmTolerance: BPM difference tolerance (default ±5 BPM)
+    ///   - limit: Maximum number of tracks to return
+    ///   - includeCompatibleKeys: If true, includes adjacent and relative keys
+    /// - Returns: Array of tracks matching both criteria
+    func findSimilarTracksByKeyAndBPM(
+        toTrackId trackId: Int64,
+        bpmTolerance: Double = 5.0,
+        limit: Int = 50,
+        includeCompatibleKeys: Bool = true
+    ) async throws -> [Track] {
+        // Get source track features
+        guard let sourceFeatures = try await getSongFeatures(forTrackId: trackId) else {
+            Logger.warning("No features found for track ID: \(trackId), trying BPM-only search")
+            return try await findTracksByBPM(toTrackId: trackId, bpmTolerance: bpmTolerance, limit: limit)
+        }
+        
+        // Get source BPM
+        var sourceBPM: Double?
+        if let tempo = sourceFeatures.tempo {
+            sourceBPM = tempo
+        } else {
+            let sourceTrack = try await dbQueue.read { db in
+                try Track.filter(Track.Columns.trackId == trackId).fetchOne(db)
+            }
+            if let bpm = sourceTrack?.bpm {
+                sourceBPM = Double(bpm)
+            }
+        }
+        
+        // Get source Camelot key
+        let sourceCamelotKey: CamelotKey?
+        if let camelotKey = sourceFeatures.camelotKey,
+           let key = CamelotKey(notation: camelotKey) {
+            sourceCamelotKey = key
+        } else if let key = sourceFeatures.key, let mode = sourceFeatures.mode,
+                  let camelot = CamelotKey(key: key, mode: mode) {
+            sourceCamelotKey = camelot
+        } else {
+            sourceCamelotKey = nil
+        }
+        
+        // Build search criteria
+        let searchKeys: [String]?
+        if let sourceKey = sourceCamelotKey {
+            searchKeys = includeCompatibleKeys ? sourceKey.compatibleKeys.map { $0.notation } : [sourceKey.notation]
+        } else {
+            searchKeys = nil
+        }
+        
+        let minBPM = sourceBPM.map { $0 - bpmTolerance }
+        let maxBPM = sourceBPM.map { $0 + bpmTolerance }
+        
+        // Find matching tracks
+        let trackIds = try await dbQueue.read { db -> Set<Int64> in
+            var query = SongFeatures
+                .filter(SongFeatures.Columns.trackId != trackId)
+            
+            // Apply key filter if available
+            if let keys = searchKeys {
+                query = query.filter(keys.contains(SongFeatures.Columns.camelotKey))
+            }
+            
+            // Apply BPM filter if available
+            if let min = minBPM, let max = maxBPM {
+                query = query.filter(SongFeatures.Columns.tempo >= min)
+                query = query.filter(SongFeatures.Columns.tempo <= max)
+            }
+            
+            // If no filters, return empty
+            if searchKeys == nil && minBPM == nil {
+                return []
+            }
+            
+            return try query
+                .select(SongFeatures.Columns.trackId)
+                .fetchSet(db) as Set<Int64>
+        }
+        
+        // Fetch tracks
+        let tracks = try await dbQueue.read { db in
+            try Track
+                .filter(trackIds.contains(Track.Columns.trackId))
+                .limit(limit)
+                .fetchAll(db)
+        }
+        
+        return tracks
     }
     
     // MARK: - Delete Features

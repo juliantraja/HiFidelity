@@ -324,6 +324,12 @@ class PlaybackController: ObservableObject {
         let newTime = value * duration
         seek(to: newTime)
     }
+
+    // MARK: - Cleanup
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 }
 
 // MARK: - Repeat Mode
@@ -346,11 +352,47 @@ enum RepeatMode {
 
 extension PlaybackController {
     var formattedCurrentTime: String {
-        formatTime(currentTime)
+        // Adjust current time based on pitch shift to show actual elapsed time
+        let pitchPercent = Double(AudioFilterSettings.shared.pitchShift)
+
+        guard abs(pitchPercent) > 0.01 else {
+            return formatTime(currentTime)
+        }
+
+        // Calculate speed ratio
+        let speedRatio = 1.0 + (pitchPercent / 100.0)
+
+        // Adjusted time = base time / speed ratio
+        let adjustedTime = currentTime / speedRatio
+        return formatTime(adjustedTime)
     }
     
     var formattedDuration: String {
-        formatTime(duration)
+        // Adjust duration based on pitch shift
+        // When pitch is changed, playback speed changes proportionally
+        // +8% pitch = 8% faster playback = shorter duration
+        // -8% pitch = 8% slower playback = longer duration
+        let adjustedDuration = adjustedDurationForPitch
+        return formatTime(adjustedDuration)
+    }
+    
+    /// Calculate duration adjusted for current pitch shift
+    /// Formula: adjustedDuration = baseDuration / (1 + pitchPercent/100)
+    var adjustedDurationForPitch: Double {
+        let pitchPercent = Double(AudioFilterSettings.shared.pitchShift)
+        
+        // If no pitch shift, return base duration
+        guard abs(pitchPercent) > 0.01 else {
+            return duration
+        }
+        
+        // Calculate speed ratio: +8% pitch = 1.08x speed, -8% pitch = 0.92x speed
+        let speedRatio = 1.0 + (pitchPercent / 100.0)
+        
+        // Adjusted duration = base duration / speed ratio
+        // Faster speed (ratio > 1) = shorter duration
+        // Slower speed (ratio < 1) = longer duration
+        return duration / speedRatio
     }
     
     private func formatTime(_ time: Double) -> String {
@@ -358,7 +400,7 @@ extension PlaybackController {
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         let seconds = totalSeconds % 60
-        
+
         if hours > 0 {
             return String(format: "%d:%02d:%02d", hours, minutes, seconds)
         } else {

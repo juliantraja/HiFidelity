@@ -13,13 +13,18 @@ struct AppearanceSettings: View {
     @AppStorage("accentOpacity") private var accentOpacity: Double = 1.0
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 32) {
+        VStack(spacing: 0) {
             // Theme Selection
             themeSection
             
             Divider()
             
-            // Advanced Options
+            // Accent Color Intensity
+            accentIntensitySection
+            
+            Divider()
+            
+            // Reset Button
             HStack {
                 Spacer()
                 Button("Reset to Defaults") {
@@ -27,24 +32,40 @@ struct AppearanceSettings: View {
                 }
                 .buttonStyle(.bordered)
             }
-            .padding(.top, 8)
-            
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
     }
     
     // MARK: - Theme Section
     
     private var themeSection: some View {
-        VStack(spacing: 28) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Theme")
-                    .font(.title3)
-                    .fontWeight(.semibold)
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 12) {
+                Image(systemName: "paintbrush.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(theme.currentTheme.primaryColor)
+                    .frame(width: 24)
                 
-                Text("Choose your preferred color theme")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Theme")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
+                    Text("Choose your preferred color theme")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
                 
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(nsColor: .controlBackgroundColor))
+            
+            // Theme cards
+            VStack(spacing: 0) {
                 LazyVGrid(columns: [
                     GridItem(.adaptive(minimum: 100), spacing: 16)
                 ], spacing: 16) {
@@ -56,52 +77,61 @@ struct AppearanceSettings: View {
                         )
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
-        
-            
-            
-            // Accent opacity
-            VStack(spacing: 8) {
-                HStack {
+            .background(Color(nsColor: .controlBackgroundColor))
+        }
+    }
+    
+    // MARK: - Accent Intensity Section
+    
+    private var accentIntensitySection: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 12) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 16))
+                    .foregroundColor(theme.currentTheme.primaryColor)
+                    .frame(width: 24)
+                
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Accent Color Intensity")
-                        .font(.headline)
-                    Spacer()
-                    Text("\(Int(accentOpacity * 100))%")
-                        .font(.subheadline)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
+                    Text("Adjust the intensity of accent colors")
+                        .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
                 
-                Slider(value: $accentOpacity, in: 0.5...1.0, step: 0.1)
-                    .accentColor(theme.currentTheme.primaryColor)
+                Spacer()
+                
+                Text("\(Int(accentOpacity * 100))%")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 50, alignment: .trailing)
             }
-        }
-    }
-    
-    
-    // MARK: - Advanced Section
-    
-    private var advancedSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Reset button
-            Button {
-                resetToDefaults()
-            } label: {
-                HStack {
-                    Image(systemName: "arrow.counterclockwise")
-                    Text("Reset to Defaults")
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(nsColor: .controlBackgroundColor))
+            
+            // Slider
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Color.clear
+                        .frame(width: 24)
+                    
+                    Slider(value: $accentOpacity, in: 0.5...1.0, step: 0.1)
+                        .accentColor(theme.currentTheme.primaryColor)
                 }
-                .font(.subheadline)
-                .foregroundColor(theme.currentTheme.primaryColor)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(theme.currentTheme.primaryColor, lineWidth: 1)
-                )
+                .padding(.vertical, 12)
             }
-            .buttonStyle(.plain)
+            .background(Color(nsColor: .controlBackgroundColor))
         }
     }
+    
     
     // MARK: - Helpers
 

@@ -365,36 +365,65 @@ struct SearchResultsView: View {
 struct TrackSearchRow: View {
     let track: Track
     let onPlay: () -> Void
-    
+
     @ObservedObject var theme = AppTheme.shared
     @ObservedObject var playback = PlaybackController.shared
     @State private var isHovered = false
-    
+    @State private var bpm: String?
+    @State private var key: String?
+
     var body: some View {
         HStack(spacing: 12) {
             // Artwork
             TrackArtworkView(track: track, size: 48, cornerRadius: 6)
-            
+
             // Track info
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.title)
                     .font(.system(size: 14, weight: .medium))
                     .lineLimit(1)
-                
-                Text("\(track.artist) • \(track.album)")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Text("\(track.artist) • \(track.album)")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+
+                    // BPM and Key tags
+                    if let bpm = bpm {
+                        Text(bpm)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(theme.currentTheme.primaryColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(theme.currentTheme.primaryColor.opacity(0.15))
+                            )
+                    }
+
+                    if let key = key {
+                        Text(key)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(theme.currentTheme.primaryColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(theme.currentTheme.primaryColor.opacity(0.15))
+                            )
+                    }
+                }
             }
-            
+
             Spacer()
-            
+
             // Duration
             Text(formatDuration(track.duration))
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
                 .monospacedDigit()
-            
+
             // Play button
             if isHovered {
                 Button {
@@ -425,6 +454,32 @@ struct TrackSearchRow: View {
         }
         .contextMenu {
             TrackContextMenu(track: track)
+        }
+        .task {
+            await loadFeatures()
+        }
+    }
+
+    private func loadFeatures() async {
+        guard let trackId = track.trackId else { return }
+
+        // Try to get features from database
+        if let features = try? await DatabaseManager.shared.getSongFeatures(forTrackId: trackId) {
+            await MainActor.run {
+                // Get user's preferred key display format
+                let formatString = UserDefaults.standard.string(forKey: "keyDisplayFormat") ?? KeyDisplayFormat.note.rawValue
+                let format = KeyDisplayFormat(rawValue: formatString) ?? .note
+
+                // Set BPM
+                if let tempo = features.tempo {
+                    bpm = "\(Int(tempo)) BPM"
+                }
+
+                // Set Key
+                if let keyValue = features.key, let mode = features.mode {
+                    key = KeyNotation.displayName(key: keyValue, mode: mode, format: format)
+                }
+            }
         }
     }
 }

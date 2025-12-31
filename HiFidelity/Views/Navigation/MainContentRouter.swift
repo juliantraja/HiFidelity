@@ -59,7 +59,7 @@ struct MainContentRouter: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 90)
+        .padding(.bottom, 145)
         .onChange(of: isSearchActive) { _, _ in
             if selectedEntity != nil && isSearchActive {
                 selectedEntity = nil

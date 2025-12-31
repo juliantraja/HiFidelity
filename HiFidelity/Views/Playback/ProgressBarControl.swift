@@ -21,16 +21,16 @@ struct ProgressBarControl: View {
                 // Background track
                 RoundedRectangle(cornerRadius: isHovering ? 4 : 2)
                     .fill(Color.secondary.opacity(isHovering ? 0.3 : 0.2))
-                    .frame(height: isHovering ? 8 : 4)
-                
+                    .frame(height: isHovering ? 12 : 4)
+
                 // Progress fill
                 RoundedRectangle(cornerRadius: isHovering ? 4 : 2)
                     .fill(progressGradient)
                     .frame(
                         width: geometry.size.width * currentProgress,
-                        height: isHovering ? 10 : 4
+                        height: isHovering ? 14 : 4
                     )
-                
+
                 // Scrubber handle
                 if isHovering || isDragging {
                     scrubberHandle
@@ -63,7 +63,7 @@ struct ProgressBarControl: View {
                 }
             }
         }
-        .frame(height: isHovering ? 10 : 4)
+        .frame(height: isHovering ? 14 : 4)
         .animation(.easeInOut(duration: 0.2), value: isHovering)
     }
     

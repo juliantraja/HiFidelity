@@ -36,7 +36,21 @@ class AppCoordinator: ObservableObject {
         // Start folder monitoring if enabled
         await startFolderMonitoring()
         
+        // Start background analysis for existing tracks without features
+        startBackgroundAnalysis()
+        
         Logger.info("Application initialization complete")
+    }
+    
+    /// Start background analysis for tracks without BPM/Key features
+    private func startBackgroundAnalysis() {
+        Task.detached(priority: .utility) {
+            // Wait a bit for app to fully initialize
+            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+            
+            Logger.info("Starting background analysis for existing tracks...")
+            await AudioAnalysisService.shared.analyzeAllTracksWithoutFeatures()
+        }
     }
     
     /// Start folder monitoring if enabled in preferences

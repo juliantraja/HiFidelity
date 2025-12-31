@@ -426,12 +426,20 @@ final class ArtworkCache {
     
     /// Invalidate cached artwork for an entity
     private func invalidateCache(entityType: EntityType, entityId: Int64) {
-        let standardSizes: [Int] = [40, 56, 140, 160, 200, 300]
+        // Keep this list in sync with the sizes requested across the app (e.g., 40 in lists, 56 in playback bar,
+        // 160 for grids, 280 for Track Info, 300 for larger previews)
+        let standardSizes: [Int] = [40, 56, 140, 160, 200, 280, 300]
         
         for size in standardSizes {
             let key = cacheKey(entityType: entityType, entityId: entityId, size: CGFloat(size))
             thumbnailCache.removeObject(forKey: key)
             fullSizeCache.removeObject(forKey: key)
+        }
+        
+        // Also remove from noArtworkSet so it can be re-checked from database
+        let noArtworkKeyValue = self.noArtworkKey(entityType: entityType, entityId: entityId)
+        noArtworkQueue.async(flags: .barrier) {
+            self.noArtworkSet.remove(noArtworkKeyValue)
         }
         
         let noArtworkKey = noArtworkKey(entityType: entityType, entityId: entityId)
@@ -693,6 +701,5 @@ final class ArtworkCache {
         }
     }
 }
-
 
 

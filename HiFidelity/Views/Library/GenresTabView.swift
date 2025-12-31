@@ -161,12 +161,29 @@ struct GenresTabView: View {
     }
     
     private func loadGenres() async {
-        isLoading = true
-        defer { isLoading = false }
-        
+        // Use smooth animation to prevent UI blinking
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isLoading = true
+            }
+        }
+
+        defer {
+            Task { @MainActor in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isLoading = false
+                }
+            }
+        }
+
         do {
-            genres = try await databaseManager.getAllGenres()
-            applyFiltersAndSort()
+            let newGenres = try await databaseManager.getAllGenres()
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    genres = newGenres
+                    applyFiltersAndSort()
+                }
+            }
         } catch {
             Logger.error("Failed to load genres: \(error)")
         }

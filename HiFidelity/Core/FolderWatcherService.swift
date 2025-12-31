@@ -12,16 +12,21 @@ import Combine
 @MainActor
 class FolderWatcherService: ObservableObject {
     static let shared = FolderWatcherService()
-    
+
     @Published private(set) var isWatching = false
     @Published private(set) var watchedFoldersCount = 0
-    
+
     private var eventMonitors: [String: FSEventStreamRef] = [:]
     private var rescanDebounceTimers: [String: Timer] = [:]
     private let debounceInterval: TimeInterval = 2.0 // Wait 2 seconds after last change before rescanning
-    
+
+    // Track files being modified by the app to ignore their events
+    private var ignoredFiles: Set<String> = []
+    private var ignoreTimers: [String: Timer] = [:]
+    private let ignoreTimeout: TimeInterval = 5.0 // Ignore file events for 5 seconds after save
+
     private weak var databaseManager: DatabaseManager?
-    
+
     private init() {}
     
     // MARK: - Public Methods
@@ -46,8 +51,8 @@ class FolderWatcherService: ObservableObject {
         isWatching = true
         watchedFoldersCount = folders.count
         
-        Logger.info("Started watching \(folders.count) folder(s)")
-        NotificationManager.shared.addMessage(.info, "Folder monitoring active")
+        Logger.info("📁 [FOLDER WATCHER] Started watching \(folders.count) folder(s)")
+        NotificationManager.shared.addMessage(.info, "Folder Monitoring active")
     }
     
     /// Stop watching all folders
@@ -76,7 +81,30 @@ class FolderWatcherService: ObservableObject {
         Logger.info("Stopped folder monitoring")
         NotificationManager.shared.addMessage(.info, "Folder monitoring stopped")
     }
-    
+
+    /// Temporarily ignore events for a file (called before saving metadata)
+    func ignoreFile(at url: URL) {
+        let path = url.path
+
+        // Cancel existing timer for this file
+        ignoreTimers[path]?.invalidate()
+
+        // Add to ignored files
+        ignoredFiles.insert(path)
+
+        // Set timer to remove from ignored list after timeout
+        let timer = Timer.scheduledTimer(withTimeInterval: ignoreTimeout, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.ignoredFiles.remove(path)
+                self?.ignoreTimers.removeValue(forKey: path)
+                Logger.debug("📁 [FOLDER WATCHER] Stopped ignoring: \(url.lastPathComponent)")
+            }
+        }
+
+        ignoreTimers[path] = timer
+        Logger.debug("📁 [FOLDER WATCHER] Ignoring file events for: \(url.lastPathComponent)")
+    }
+
     /// Watch a specific folder
     func startWatching(folder: Folder) {
         let path = folder.url.path
@@ -148,11 +176,11 @@ class FolderWatcherService: ObservableObject {
         if FSEventStreamStart(stream) {
             eventMonitors[path] = stream
             watchedFoldersCount = eventMonitors.count
-            Logger.info("Started monitoring: \(folder.name)")
+            Logger.info("📁 [FOLDER WATCHER] Started monitoring: \(folder.name) at \(path)")
         } else {
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
-            Logger.error("Failed to start FSEventStream for: \(path)")
+            Logger.error("📁 [FOLDER WATCHER] Failed to start FSEventStream for: \(path)")
         }
     }
     
@@ -184,32 +212,44 @@ class FolderWatcherService: ObservableObject {
     // MARK: - Private Methods
     
     private func handleFileSystemEvent(path: String, flags: FSEventStreamEventFlags) {
+        // Log all events for debugging (even if we don't process them)
+        Logger.debug("📁 [FOLDER WATCHER] Received event for: \(URL(fileURLWithPath: path).lastPathComponent) (flags: \(flags))")
+
+        // Check if this file is being ignored (app is currently saving it)
+        if ignoredFiles.contains(path) {
+            Logger.debug("📁 [FOLDER WATCHER] Ignoring event for file being saved by app: \(URL(fileURLWithPath: path).lastPathComponent)")
+            return
+        }
+
         // Filter out events we don't care about
-        let relevantFlags: FSEventStreamEventFlags = 
+        let relevantFlags: FSEventStreamEventFlags =
             FSEventStreamEventFlags(kFSEventStreamEventFlagItemCreated) |
             FSEventStreamEventFlags(kFSEventStreamEventFlagItemRemoved) |
             FSEventStreamEventFlags(kFSEventStreamEventFlagItemRenamed) |
             FSEventStreamEventFlags(kFSEventStreamEventFlagItemModified)
-        
+
         guard flags & relevantFlags != 0 else {
+            Logger.debug("📁 [FOLDER WATCHER] Ignoring event (not relevant)")
             return
         }
-        
+
         // Check if it's a supported audio file
         let fileExtension = URL(fileURLWithPath: path).pathExtension.lowercased()
         guard !fileExtension.isEmpty && AudioFormat.isSupported(fileExtension) else {
+            Logger.debug("📁 [FOLDER WATCHER] Ignoring non-audio file: \(fileExtension.isEmpty ? "no extension" : fileExtension)")
             return
         }
         
         // Find the folder that contains this file
         guard let folderPath = findWatchedFolder(for: path),
               let folder = databaseManager?.getAllFolders().first(where: { $0.url.path == folderPath }) else {
+            Logger.debug("📁 [FOLDER WATCHER] Could not find watched folder for: \(path)")
             return
         }
         
-        // Log the event
+        // Log the event (use INFO level so it's visible in console)
         let eventType = describeEvent(flags: flags)
-        Logger.debug("File system event in \(folder.name): \(eventType) - \(URL(fileURLWithPath: path).lastPathComponent)")
+        Logger.info("📁 [FOLDER WATCHER] File system event in \(folder.name): \(eventType) - \(URL(fileURLWithPath: path).lastPathComponent)")
         
         // Debounce the rescan - cancel existing timer and create a new one
         rescanDebounceTimers[folderPath]?.invalidate()

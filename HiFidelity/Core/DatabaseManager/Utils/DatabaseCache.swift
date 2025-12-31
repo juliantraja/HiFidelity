@@ -77,7 +77,7 @@ final class DatabaseCache: ObservableObject, @unchecked Sendable {
         )
     }
     
-    @objc private func invalidateCache() {
+    @objc private func invalidateCache(_ notification: Notification? = nil) {
         Logger.debug("Cache invalidated due to library data change")
         foldersCache = nil
         folderTracksCache.removeAll()
@@ -93,9 +93,17 @@ final class DatabaseCache: ObservableObject, @unchecked Sendable {
         lastTrackRefresh = nil
         lastPlaylistRefresh = nil
         
-        // Also clear artwork cache since tracks may have changed
-        Task {
+        // Only invalidate specific artwork if trackId is provided, otherwise clear all
+        if let notification = notification,
+           let userInfo = notification.userInfo,
+           let _ = userInfo["trackId"] as? Int64 {
+            // Invalidate all artwork caches so album/artist/queue/grid views refresh immediately
             ArtworkCache.shared.clearAll()
+        } else {
+            // Clear all artwork cache only if no specific trackId provided
+            Task {
+                ArtworkCache.shared.clearAll()
+            }
         }
     }
     
@@ -386,6 +394,12 @@ final class DatabaseCache: ObservableObject, @unchecked Sendable {
             )
         }
     }
+
+    // MARK: - Cleanup
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 }
 
 // MARK: - Cache Statistics
@@ -453,4 +467,3 @@ struct LibraryStats {
         """
     }
 }
-

@@ -192,10 +192,10 @@ private struct RefreshButton: View {
     
     private func performRefresh() {
         Task {
-            // Notify views to reload
+            // Notify views to reload from cache (does NOT scan folders for new files)
             await MainActor.run {
                 NotificationCenter.default.post(name: .refreshLibraryData, object: nil)
-                NotificationManager.shared.addMessage(.info, "Library refreshed")
+                NotificationManager.shared.addMessage(.info, "Library view refreshed")
             }
             
             // Stop animation after reload
@@ -306,14 +306,14 @@ private struct SearchBar: View {
     @Binding var text: String
     @Binding var isActive: Bool
     @FocusState private var isFocused: Bool
-    
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(isFocused ? .primary : .secondary)
                 .font(.system(size: 16, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
-            
+
             TextField("What do you want to play?", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
@@ -356,6 +356,13 @@ private struct SearchBar: View {
                 isActive = false
             } else if newValue.count >= 2 {
                 isActive = true
+            }
+        }
+        // Prevent auto-focus on initial load
+        .onAppear {
+            // Use DispatchQueue to ensure this runs immediately without visible delay
+            DispatchQueue.main.async {
+                isFocused = false
             }
         }
         // Listen for global focus dismissal

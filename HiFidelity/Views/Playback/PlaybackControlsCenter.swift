@@ -10,7 +10,10 @@ import SwiftUI
 struct PlaybackControlsCenter: View {
     @ObservedObject var playback = PlaybackController.shared
     @ObservedObject var theme = AppTheme.shared
+    @State private var pitchShift: Float = 0.0
     @Environment(\.openWindow) private var openWindow
+    
+    private var filterSettings = AudioFilterSettings.shared
     
     var body: some View {
         VStack(spacing: 8) {
@@ -21,6 +24,15 @@ struct PlaybackControlsCenter: View {
             timeLabels
         }
         .fixedSize()
+        .onReceive(filterSettings.$pitchShift) { newValue in
+            // Update state asynchronously to avoid layout recursion
+            DispatchQueue.main.async {
+                pitchShift = newValue
+            }
+        }
+        .onAppear {
+            pitchShift = filterSettings.pitchShift
+        }
     }
     
     // MARK: - Control Buttons

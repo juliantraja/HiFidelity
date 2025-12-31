@@ -300,7 +300,7 @@ class DACManager: ObservableObject {
         )
         
         var propertySize = UInt32(MemoryLayout<CFString>.size)
-        var deviceName: CFString = "" as CFString
+        var deviceName: Unmanaged<CFString>?
         
         let status = AudioObjectGetPropertyData(
             currentDeviceID,
@@ -311,12 +311,12 @@ class DACManager: ObservableObject {
             &deviceName
         )
         
-        guard status == noErr else {
+        guard status == noErr, let cfString = deviceName?.takeRetainedValue() else {
             Logger.error("Failed to get device name: \(status)")
             return nil
         }
         
-        return deviceName as String
+        return cfString as String
     }
     
     /// Get device UID for matching with BASS
@@ -330,7 +330,7 @@ class DACManager: ObservableObject {
         )
         
         var propertySize = UInt32(MemoryLayout<CFString>.size)
-        var deviceUID: CFString = "" as CFString
+        var deviceUID: Unmanaged<CFString>?
         
         let status = AudioObjectGetPropertyData(
             currentDeviceID,
@@ -341,12 +341,12 @@ class DACManager: ObservableObject {
             &deviceUID
         )
         
-        guard status == noErr else {
+        guard status == noErr, let cfString = deviceUID?.takeRetainedValue() else {
             Logger.error("Failed to get device UID: \(status)")
             return nil
         }
         
-        return deviceUID as String
+        return cfString as String
     }
 }
 
@@ -738,23 +738,26 @@ extension DACManager {
             return false
         }
         
-        let bufferList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: 1)
-        defer { bufferList.deallocate() }
+        let bufferListSize = Int(propertySize)
+        let bufferListPointer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferListSize)
+        defer { bufferListPointer.deallocate() }
         
+        var actualSize = propertySize
         let getStatus = AudioObjectGetPropertyData(
             deviceID,
             &address,
             0,
             nil,
-            &propertySize,
-            bufferList
+            &actualSize,
+            bufferListPointer
         )
         
         guard getStatus == noErr else {
             return false
         }
         
-        return bufferList.pointee.mNumberBuffers > 0
+        let bufferList = bufferListPointer.withMemoryRebound(to: AudioBufferList.self, capacity: 1) { $0.pointee }
+        return bufferList.mNumberBuffers > 0
     }
     
     /// Get device name for a specific device ID
@@ -766,7 +769,7 @@ extension DACManager {
         )
         
         var propertySize = UInt32(MemoryLayout<CFString>.size)
-        var deviceName: CFString = "" as CFString
+        var deviceName: Unmanaged<CFString>?
         
         let status = AudioObjectGetPropertyData(
             deviceID,
@@ -777,7 +780,11 @@ extension DACManager {
             &deviceName
         )
         
-        return status == noErr ? (deviceName as String) : nil
+        guard status == noErr, let cfString = deviceName?.takeRetainedValue() else {
+            return nil
+        }
+        
+        return cfString as String
     }
     
     /// Get device UID for a specific device ID
@@ -789,7 +796,7 @@ extension DACManager {
         )
         
         var propertySize = UInt32(MemoryLayout<CFString>.size)
-        var deviceUID: CFString = "" as CFString
+        var deviceUID: Unmanaged<CFString>?
         
         let status = AudioObjectGetPropertyData(
             deviceID,
@@ -800,7 +807,11 @@ extension DACManager {
             &deviceUID
         )
         
-        return status == noErr ? (deviceUID as String) : nil
+        guard status == noErr, let cfString = deviceUID?.takeRetainedValue() else {
+            return nil
+        }
+        
+        return cfString as String
     }
     
     /// Get current sample rate for a specific device
@@ -871,7 +882,7 @@ extension DACManager {
         
         if numBuffers > 0 {
             let buffersPointer = UnsafeMutableAudioBufferListPointer(
-                UnsafeMutablePointer(&(bufferListPointer.withMemoryRebound(to: AudioBufferList.self, capacity: 1) { $0 }.pointee))
+                bufferListPointer.withMemoryRebound(to: AudioBufferList.self, capacity: 1) { $0 }
             )
             
             for buffer in buffersPointer {

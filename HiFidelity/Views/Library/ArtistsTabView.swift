@@ -109,6 +109,11 @@ struct ArtistsTabView: View {
                 await loadArtists()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .libraryDataDidChange)) { _ in
+            Task {
+                await loadArtists()
+            }
+        }
         .onChange(of: selectedSort) { _, newSort in
             sortOptionId = newSort.id
             sortAscending = newSort.ascending
@@ -168,12 +173,29 @@ struct ArtistsTabView: View {
     }
     
     private func loadArtists() async {
-        isLoading = true
-        defer { isLoading = false }
-        
+        // Use smooth animation to prevent UI blinking
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isLoading = true
+            }
+        }
+
+        defer {
+            Task { @MainActor in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isLoading = false
+                }
+            }
+        }
+
         do {
-            artists = try await databaseManager.getAllArtists()
-            applyFiltersAndSort()
+            let newArtists = try await databaseManager.getAllArtists()
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    artists = newArtists
+                    applyFiltersAndSort()
+                }
+            }
             
             // Preload artwork for initially visible artists
             Task {
@@ -346,4 +368,3 @@ private struct ArtistOptionsDropdown: View {
         .buttonStyle(.plain)
     }
 }
-

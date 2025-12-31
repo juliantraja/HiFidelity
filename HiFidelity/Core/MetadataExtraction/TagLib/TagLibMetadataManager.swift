@@ -16,19 +16,29 @@ struct TagLibMetadataManager {
     /// - Parameter url: URL to the audio file
     /// - Returns: TrackMetadata object populated with extracted data
     static func extractMetadata(from url: URL) -> TrackMetadata {
+        let extractStartTime = Date()
         var metadata = TrackMetadata(url: url)
         
         // Try extracting with TagLib
         do {
+            let taglibStartTime = Date()
             let taglibMetadata = try TagLibMetadataExtractor.extractMetadata(from: url)
+            let taglibDuration = Date().timeIntervalSince(taglibStartTime)
+            Logger.debug("⏱️ [IMPORT] [METADATA] [TAGLIB] TagLib extraction took \(String(format: "%.3f", taglibDuration))s: \(url.lastPathComponent)")
             
             // Map TagLib metadata to our TrackMetadata structure
+            let mapStartTime = Date()
             mapTagLibMetadataToTrackMetadata(taglibMetadata, into: &metadata)
+            let mapDuration = Date().timeIntervalSince(mapStartTime)
+            Logger.debug("⏱️ [IMPORT] [METADATA] [MAP] Metadata mapping took \(String(format: "%.3f", mapDuration))s")
         } catch {
             Logger.error("TagLib extraction failed for \(url.lastPathComponent): \(error.localizedDescription)")
             // Return metadata with at least filename as title
             metadata.title = url.deletingPathExtension().lastPathComponent
         }
+        
+        let extractDuration = Date().timeIntervalSince(extractStartTime)
+        Logger.debug("⏱️ [IMPORT] [METADATA] Total extractMetadata took \(String(format: "%.3f", extractDuration))s: \(url.lastPathComponent)")
         
         return metadata
     }

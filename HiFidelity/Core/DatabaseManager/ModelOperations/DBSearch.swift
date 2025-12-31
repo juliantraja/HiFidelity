@@ -47,34 +47,47 @@ extension DatabaseManager {
         guard !query.isEmpty else {
             return SearchResults()
         }
-        
+
+        // Check if query is searching for BPM or Key
+        if let bpmTracks = try? await searchByBPM(query: query, limit: limit) {
+            var results = SearchResults()
+            results.tracks = bpmTracks
+            return results
+        }
+
+        if let keyTracks = try? await searchByKey(query: query, limit: limit) {
+            var results = SearchResults()
+            results.tracks = keyTracks
+            return results
+        }
+
         // Prepare FTS5 queries with different strategies
         let queries = prepareFTSQueries(query, mode: mode)
-        
+
         do {
             return try await dbQueue.read { db in
                 var results = SearchResults()
-                
+
                 // Search tracks with weighted columns (title > artist > album > genre)
                 // BM25 ranking: title=10.0, artist=5.0, album=3.0, album_artist=3.0, genre=1.0, composer=1.0
                 results.tracks = try searchTracksWeighted(db: db, queries: queries, limit: limit)
-                
+
                 // Search albums with weighted columns (title > normalized_name > album_artist)
                 // BM25 ranking: title=10.0, normalized_name=5.0, album_artist=3.0
                 results.albums = try searchAlbumsWeighted(db: db, queries: queries, limit: limit)
-                
+
                 // Search artists with weighted columns (name > normalized_name)
                 // BM25 ranking: name=10.0, normalized_name=5.0
                 results.artists = try searchArtistsWeighted(db: db, queries: queries, limit: limit)
-                
+
                 // Search genres with weighted columns (name > normalized_name)
                 // BM25 ranking: name=10.0, normalized_name=5.0
                 results.genres = try searchGenresWeighted(db: db, queries: queries, limit: limit)
-                
+
                 // Search playlists with weighted columns (name > description)
                 // BM25 ranking: name=10.0, description=2.0
                 results.playlists = try searchPlaylistsWeighted(db: db, queries: queries, limit: limit)
-                
+
                 return results
             }
         } catch {
@@ -506,11 +519,209 @@ extension DatabaseManager {
     /// Search playlists only using FTS5 with weighted ranking
     func searchPlaylists(query: String, limit: Int = 50, mode: SearchMode = .and) async throws -> [Playlist] {
         guard !query.isEmpty else { return [] }
-        
+
         let queries = prepareFTSQueries(query, mode: mode)
-        
+
         return try await dbQueue.read { db in
             return try searchPlaylistsWeighted(db: db, queries: queries, limit: limit)
+        }
+    }
+
+    // MARK: - BPM and Key Search
+
+    /// Search tracks by BPM
+    /// Supports queries like: "128", "128 bpm", "120-130", "~128" (within 5 BPM)
+    private func searchByBPM(query: String, limit: Int = 100) async throws -> [Track]? {
+        let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
+
+        // Check if query contains BPM-related patterns
+        let bpmPattern = #"^~?(\d+)(?:\s*-\s*(\d+))?(?:\s*bpm)?$"#
+        guard let regex = try? NSRegularExpression(pattern: bpmPattern, options: []),
+              let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) else {
+            return nil
+        }
+
+        // Extract BPM values
+        let bpm1Range = Range(match.range(at: 1), in: trimmed)!
+        let bpm1 = Double(trimmed[bpm1Range])!
+
+        let tolerance: Double = 5.0
+        let minBPM: Double
+        let maxBPM: Double
+
+        if let bpm2Range = Range(match.range(at: 2), in: trimmed) {
+            // Range query: "120-130"
+            let bpm2 = Double(trimmed[bpm2Range])!
+            minBPM = min(bpm1, bpm2)
+            maxBPM = max(bpm1, bpm2)
+        } else if trimmed.starts(with: "~") {
+            // Approximate query: "~128"
+            minBPM = bpm1 - tolerance
+            maxBPM = bpm1 + tolerance
+        } else {
+            // Exact query: "128" (with small tolerance)
+            minBPM = bpm1 - 2.0
+            maxBPM = bpm1 + 2.0
+        }
+
+        // Search in song_features table and join with tracks
+        return try await dbQueue.read { db in
+            try Track.fetchAll(db, sql: """
+                SELECT DISTINCT t.*
+                FROM tracks t
+                INNER JOIN song_features sf ON t.id = sf.track_id
+                WHERE sf.tempo BETWEEN ? AND ?
+                ORDER BY ABS(sf.tempo - ?) ASC
+                LIMIT ?
+                """, arguments: [minBPM, maxBPM, bpm1, limit])
+        }
+    }
+
+    /// Search tracks by musical key
+    /// Supports queries like: "Dm", "D minor", "D", "D major", "E♭m", "Eb", "12A", "7d", "7m"
+    private func searchByKey(query: String, limit: Int = 100) async throws -> [Track]? {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+
+        // Try to parse as Camelot notation (Camelot Key: 12A, 12B or Open Key: 7d, 7m)
+        if let camelotKey = parseCamelotOrOpenKey(trimmed) {
+            return try await searchByParsedKey(key: camelotKey.key, mode: camelotKey.mode, limit: limit)
+        }
+
+        // Try to parse as note notation (Dm, D, E♭m, Eb, etc.)
+        if let parsedKey = parseNoteNotation(trimmed) {
+            return try await searchByParsedKey(key: parsedKey.key, mode: parsedKey.mode, limit: limit)
+        }
+
+        return nil
+    }
+
+    /// Parse Camelot (12A/12B) or Open Key (7d/7m) notation
+    private func parseCamelotOrOpenKey(_ query: String) -> (key: Int, mode: Int)? {
+        let trimmed = query.uppercased()
+
+        // Try Camelot notation first (e.g., "12A", "7B")
+        if trimmed.count >= 2 {
+            let suffix = trimmed.suffix(1)
+            if suffix == "A" || suffix == "B" {
+                // Camelot notation
+                let numberString = String(trimmed.dropLast())
+                if let number = Int(numberString), number >= 1 && number <= 12 {
+                    if let camelot = CamelotKey(notation: trimmed) {
+                        // Convert back to standard key notation
+                        return camelotToStandardKey(camelot)
+                    }
+                }
+            } else if suffix == "D" || suffix == "M" {
+                // Open Key notation (e.g., "7d" for minor, "7m" for major)
+                let numberString = String(trimmed.dropLast())
+                if let number = Int(numberString), number >= 1 && number <= 12 {
+                    let isMinor = (suffix == "D")
+                    let camelot = CamelotKey(number: number, isMinor: isMinor)
+                    return camelotToStandardKey(camelot)
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// Parse note notation (e.g., "Dm", "D", "E♭m", "Eb", "E flat major", "C sharp minor")
+    private func parseNoteNotation(_ query: String) -> (key: Int, mode: Int)? {
+        var trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
+
+        // Normalize various flat/sharp text representations
+        trimmed = trimmed
+            .replacingOccurrences(of: " flat ", with: "♭ ")
+            .replacingOccurrences(of: "-flat ", with: "♭ ")
+            .replacingOccurrences(of: " flat", with: "♭")
+            .replacingOccurrences(of: "-flat", with: "♭")
+            .replacingOccurrences(of: " sharp ", with: "♯ ")
+            .replacingOccurrences(of: "-sharp ", with: "♯ ")
+            .replacingOccurrences(of: " sharp", with: "♯")
+            .replacingOccurrences(of: "-sharp", with: "♯")
+            .replacingOccurrences(of: "#", with: "♯")
+
+        // Determine if minor or major
+        let isMinor = trimmed.hasSuffix("m") || trimmed.contains("minor")
+
+        // Extract the note part
+        var notePart = trimmed
+            .replacingOccurrences(of: "minor", with: "")
+            .replacingOccurrences(of: "major", with: "")
+            .trimmingCharacters(in: .whitespaces)
+
+        // Remove trailing 'm' if present
+        if isMinor && notePart.hasSuffix("m") {
+            notePart = String(notePart.dropLast())
+        }
+
+        // Normalize remaining 'b' to flat symbol (but not at the end where it means B note)
+        // Only replace 'b' if it follows a note letter
+        if notePart.count > 1 && notePart.hasSuffix("♭") == false {
+            let lastChar = notePart.suffix(1)
+            if lastChar == "b" {
+                let beforeLast = notePart.dropLast()
+                if beforeLast.last?.isLetter == true {
+                    notePart = String(beforeLast) + "♭"
+                }
+            }
+        }
+
+        // Map note names to key numbers (0-11)
+        let noteMap: [String: Int] = [
+            "c": 0, "c♯": 1, "d♭": 1,
+            "d": 2, "d♯": 3, "e♭": 3,
+            "e": 4,
+            "f": 5, "f♯": 6, "g♭": 6,
+            "g": 7, "g♯": 8, "a♭": 8,
+            "a": 9, "a♯": 10, "b♭": 10,
+            "b": 11
+        ]
+
+        if let key = noteMap[notePart] {
+            let mode = (isMinor ? 0 : 1)
+            return (key, mode)
+        }
+
+        return nil
+    }
+
+    /// Convert Camelot key to standard key notation (0-11 for key, 0-1 for mode)
+    private func camelotToStandardKey(_ camelot: CamelotKey) -> (key: Int, mode: Int) {
+        // Reverse mapping from Camelot to standard notation
+        let reverseMap: [(camelotNumber: Int, isMinor: Bool, key: Int)] = [
+            (5, true, 0), (8, false, 0),   // C
+            (12, true, 1), (3, false, 1),  // C#/D♭
+            (7, true, 2), (10, false, 2),  // D
+            (2, true, 3), (5, false, 3),   // D#/E♭
+            (9, true, 4), (12, false, 4),  // E
+            (4, true, 5), (7, false, 5),   // F
+            (11, true, 6), (2, false, 6),  // F#/G♭
+            (6, true, 7), (9, false, 7),   // G
+            (1, true, 8), (4, false, 8),   // G#/A♭
+            (8, true, 9), (11, false, 9),  // A
+            (3, true, 10), (6, false, 10), // A#/B♭
+            (10, true, 11), (1, false, 11) // B
+        ]
+
+        if let match = reverseMap.first(where: { $0.camelotNumber == camelot.number && $0.isMinor == camelot.isMinor }) {
+            return (match.key, camelot.isMinor ? 0 : 1)
+        }
+
+        // Fallback (shouldn't happen)
+        return (0, 0)
+    }
+
+    /// Search by parsed key and mode
+    private func searchByParsedKey(key: Int, mode: Int, limit: Int) async throws -> [Track] {
+        return try await dbQueue.read { db in
+            try Track.fetchAll(db, sql: """
+                SELECT DISTINCT t.*
+                FROM tracks t
+                INNER JOIN song_features sf ON t.id = sf.track_id
+                WHERE sf.key = ? AND sf.mode = ?
+                LIMIT ?
+                """, arguments: [key, mode, limit])
         }
     }
 }

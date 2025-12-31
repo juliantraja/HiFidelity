@@ -23,7 +23,8 @@ struct NSTrackTableView: NSViewRepresentable {
     let onPlayTrack: (Track) -> Void
     let isCurrentTrack: (Track) -> Bool
     var playlistContext: PlaylistContext?
-    
+    let currentTrackPath: String?  // Add this to force reload when current track changes
+
     @EnvironmentObject private var trackInfoManager: TrackInfoManager
     @EnvironmentObject private var appCoordinator: AppCoordinator
     @ObservedObject var playback = PlaybackController.shared
@@ -78,31 +79,72 @@ struct NSTrackTableView: NSViewRepresentable {
     
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let tableView = scrollView.documentView as? NSTableView else { return }
-        
+
         // Check if tracks actually changed before reloading
-        let tracksChanged = context.coordinator.tracks.count != tracks.count ||
-                           !context.coordinator.tracks.elementsEqual(tracks, by: { $0.id == $1.id })
-        
+        // We need to check both structure (count/IDs) and content (metadata) changes
+        let structureChanged = context.coordinator.tracks.count != tracks.count ||
+                              !context.coordinator.tracks.elementsEqual(tracks, by: { $0.id == $1.id })
+
+        // Check if track metadata changed by comparing trackId (which is stable across updates)
+        // and key metadata fields
+        let metadataChanged = !structureChanged && tracks.count > 0 &&
+                             !zip(context.coordinator.tracks, tracks).allSatisfy { old, new in
+                                 old.trackId == new.trackId &&
+                                 old.title == new.title &&
+                                 old.artist == new.artist &&
+                                 old.album == new.album &&
+                                 old.genre == new.genre &&
+                                 old.year == new.year
+                             }
+
+        // Detect current track change by comparing the path parameter
+        let currentTrackChanged = context.coordinator.currentTrackPath != currentTrackPath
+
+        if currentTrackChanged {
+            Logger.debug("🎵 Current track changed: '\(context.coordinator.currentTrackPath?.split(separator: "/").last?.description ?? "nil")' -> '\(currentTrackPath?.split(separator: "/").last?.description ?? "nil")'")
+        }
+
         // Update coordinator data
         context.coordinator.tracks = tracks
-        context.coordinator.selection = $selection
         context.coordinator.onPlayTrack = onPlayTrack
         context.coordinator.isCurrentTrack = isCurrentTrack
         context.coordinator.playlistContext = playlistContext
         context.coordinator.sortOrder = $sortOrder
-        
-        // Only reload if tracks actually changed
-        if tracksChanged {
+        context.coordinator.currentTrackPath = currentTrackPath
+
+        // Reload if tracks structure, metadata, or current track changed
+        if structureChanged || metadataChanged || currentTrackChanged {
+            Logger.debug("📊 Reloading table: structureChanged=\(structureChanged), metadataChanged=\(metadataChanged), currentTrackChanged=\(currentTrackChanged)")
             tableView.reloadData()
         }
-        
-        // Update selection
+
+        // Update selection - only force it when structure/metadata changed to avoid jumping
+        // But always allow selection updates if the binding value changed (for Track Info navigation)
         if let selectedId = selection,
-           let index = tracks.firstIndex(where: { $0.id == selectedId }),
-           !tableView.selectedRowIndexes.contains(index) {
-            tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+           let index = tracks.firstIndex(where: { $0.id == selectedId }) {
+            // Check if selection binding actually changed (Track Info navigation)
+            // This happens when TracksTabView updates selectedTrack from Track Info navigation
+            let selectionBindingChanged = context.coordinator.selection.wrappedValue != selectedId
+            // Only update if: selection is different AND (table was reloaded OR binding changed)
+            let shouldSelect = !tableView.selectedRowIndexes.contains(index) && (structureChanged || metadataChanged || selectionBindingChanged)
+            Logger.debug("🎯 Selection update: index=\(index), currentlySelected=\(tableView.selectedRowIndexes.contains(index)), structureChanged=\(structureChanged), metadataChanged=\(metadataChanged), bindingChanged=\(selectionBindingChanged), willSelect=\(shouldSelect)")
+            if shouldSelect {
+                tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+                tableView.scrollRowToVisible(index)
+                Logger.debug("🎯 Called selectRowIndexes for index \(index)")
+            }
+            // Update the binding reference after checking
+            context.coordinator.selection = $selection
         } else if selection == nil && !tableView.selectedRowIndexes.isEmpty {
+            Logger.debug("🎯 Deselecting all rows")
             tableView.deselectAll(nil)
+            context.coordinator.selection = $selection
+        } else if selection != nil {
+            Logger.debug("🎯 Selection exists but track not found in tracks array. selection=\(String(describing: selection)), tracks.count=\(tracks.count)")
+            context.coordinator.selection = $selection
+        } else {
+            // No selection at all
+            context.coordinator.selection = $selection
         }
     }
     
@@ -126,7 +168,8 @@ struct NSTrackTableView: NSViewRepresentable {
         var onPlayTrack: (Track) -> Void
         var isCurrentTrack: (Track) -> Bool
         var playlistContext: NSTrackTableView.PlaylistContext?
-        
+        var currentTrackPath: String?
+
         weak var tableView: NSTableView?
         private var columnIdentifiers: [ColumnType] = []
         
@@ -154,6 +197,14 @@ struct NSTrackTableView: NSViewRepresentable {
                 name: .dismissAllFocus,
                 object: nil
             )
+            
+            // Listen for song features updates to refresh BPM/Key columns
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(songFeaturesDidUpdate(_:)),
+                name: .songFeaturesDidUpdate,
+                object: nil
+            )
         }
         
         deinit {
@@ -165,6 +216,28 @@ struct NSTrackTableView: NSViewRepresentable {
             DispatchQueue.main.async { [weak self] in
                 if let window = self?.tableView?.window {
                     window.makeFirstResponder(nil)
+                }
+            }
+        }
+        
+        @objc private func songFeaturesDidUpdate(_ notification: Notification) {
+            // Refresh the affected row(s) to show updated BPM/Key
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, let tableView = self.tableView else { return }
+                
+                if let trackId = notification.userInfo?["trackId"] as? Int64 {
+                    // Find the row index for this track
+                    if let rowIndex = self.tracks.firstIndex(where: { $0.trackId == trackId }) {
+                        // Reload the specific row - this will recreate the cells with updated data
+                        let indexSet = IndexSet(integer: rowIndex)
+                        tableView.reloadData(forRowIndexes: indexSet, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
+                        
+                        // Also invalidate the row height cache to ensure proper display
+                        tableView.noteHeightOfRows(withIndexesChanged: indexSet)
+                    }
+                } else {
+                    // If no specific track ID, refresh all rows (features might have been batch updated)
+                    tableView.reloadData()
                 }
             }
         }
@@ -214,10 +287,14 @@ struct NSTrackTableView: NSViewRepresentable {
             guard let tableView = notification.object as? NSTableView else { return }
             let selectedRow = tableView.selectedRow
             
-            if selectedRow >= 0 && selectedRow < tracks.count {
-                selection.wrappedValue = tracks[selectedRow].id
-            } else {
-                selection.wrappedValue = nil
+            // Defer state modification to avoid "Modifying state during view update" warning
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                if selectedRow >= 0 && selectedRow < self.tracks.count {
+                    self.selection.wrappedValue = self.tracks[selectedRow].id
+                } else {
+                    self.selection.wrappedValue = nil
+                }
             }
         }
         
@@ -235,6 +312,7 @@ struct NSTrackTableView: NSViewRepresentable {
             columnIdentifiers = [
                 .title, .artist, .album, .genre, .year,
                 .trackNumber, .discNumber, .duration,
+                .bpm, .key,
                 .playCount, .codec, .dateAdded, .filename
             ]
             
@@ -283,6 +361,10 @@ struct NSTrackTableView: NSViewRepresentable {
                 return createNumberCell(value: track.discNumber, cellView: cellView)
             case .duration:
                 return createDurationCell(track: track, cellView: cellView)
+            case .bpm:
+                return createBPMCell(track: track, cellView: cellView)
+            case .key:
+                return createKeyCell(track: track, cellView: cellView)
             case .playCount:
                 return createNumberCell(value: track.playCount, cellView: cellView)
             case .codec:
@@ -335,8 +417,8 @@ struct NSTrackTableView: NSViewRepresentable {
                 artworkView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
                 artworkView.widthAnchor.constraint(equalToConstant: 40),
                 artworkView.heightAnchor.constraint(equalToConstant: 40),
-                
-                titleLabel.leadingAnchor.constraint(equalTo: artworkView.trailingAnchor, constant: 10),
+
+                titleLabel.leadingAnchor.constraint(equalTo: artworkView.trailingAnchor, constant: 8),
                 titleLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
                 titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8)
             ])
@@ -393,6 +475,92 @@ struct NSTrackTableView: NSViewRepresentable {
         
         private func createDurationCell(track: Track, cellView: NSTableCellView) -> NSView {
             let label = NSTextField(labelWithString: track.formattedDuration)
+            label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            label.textColor = .secondaryLabelColor
+            label.alignment = .left
+            label.translatesAutoresizingMaskIntoConstraints = false
+            
+            cellView.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 8),
+                label.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
+                label.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -8)
+            ])
+            
+            return cellView
+        }
+        
+        private func createBPMCell(track: Track, cellView: NSTableCellView) -> NSView {
+            // Try to get BPM from track metadata first
+            var bpmText = "—"
+            if let bpm = track.bpm {
+                bpmText = "\(bpm)"
+            } else if let trackId = track.trackId {
+                // Try to get from song_features synchronously if available
+                // This will be updated asynchronously if not available yet
+                Task {
+                    if let features = try? await DatabaseManager.shared.getSongFeatures(forTrackId: trackId),
+                       let tempo = features.tempo {
+                        // Cache the features for sorting
+                        Track.cacheFeatures(trackId: trackId, bpm: tempo, key: features.key, mode: features.mode)
+
+                        await MainActor.run {
+                            // Update the label if it still exists
+                            if let label = cellView.subviews.first as? NSTextField {
+                                label.stringValue = "\(Int(tempo))"
+                            }
+                        }
+                    }
+                }
+            }
+            
+            let label = NSTextField(labelWithString: bpmText)
+            label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            label.textColor = .secondaryLabelColor
+            label.alignment = .left
+            label.translatesAutoresizingMaskIntoConstraints = false
+            
+            cellView.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 8),
+                label.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
+                label.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -8)
+            ])
+            
+            return cellView
+        }
+        
+        private func createKeyCell(track: Track, cellView: NSTableCellView) -> NSView {
+            // Try to get key from song_features
+            let keyText = "—"
+            
+            if let trackId = track.trackId {
+                Task {
+                    if let features = try? await DatabaseManager.shared.getSongFeatures(forTrackId: trackId) {
+                        // Cache the features for sorting
+                        Track.cacheFeatures(trackId: trackId, bpm: features.tempo, key: features.key, mode: features.mode)
+
+                        // Get user's preferred key display format
+                        let formatString = UserDefaults.standard.string(forKey: "keyDisplayFormat") ?? KeyDisplayFormat.note.rawValue
+                        let format = KeyDisplayFormat(rawValue: formatString) ?? .note
+
+                        let displayKey: String?
+                        if let key = features.key, let mode = features.mode {
+                            displayKey = KeyNotation.displayName(key: key, mode: mode, format: format)
+                        } else {
+                            displayKey = nil
+                        }
+                        
+                        await MainActor.run {
+                            if let label = cellView.subviews.first as? NSTextField {
+                                label.stringValue = displayKey ?? "—"
+                            }
+                        }
+                    }
+                }
+            }
+            
+            let label = NSTextField(labelWithString: keyText)
             label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             label.textColor = .secondaryLabelColor
             label.alignment = .left
@@ -510,7 +678,12 @@ struct NSTrackTableView: NSViewRepresentable {
             infoItem.target = self
             infoItem.representedObject = track
             menu.addItem(infoItem)
-            
+
+            let reAnalyzeItem = NSMenuItem(title: "Re-Analyze", action: #selector(reAnalyzeTrack(_:)), keyEquivalent: "")
+            reAnalyzeItem.target = self
+            reAnalyzeItem.representedObject = track
+            menu.addItem(reAnalyzeItem)
+
             menu.addItem(NSMenuItem.separator())
             
             // Navigation actions (only show if not unknown)
@@ -635,9 +808,16 @@ struct NSTrackTableView: NSViewRepresentable {
         
         @objc func showTrackInfo(_ sender: NSMenuItem) {
             guard let track = sender.representedObject as? Track else { return }
-            TrackContextMenuBuilder.showTrackInfo(track)
+            // Find the index of this track in the current track list
+            let currentIndex = tracks.firstIndex(where: { $0.id == track.id }) ?? 0
+            TrackContextMenuBuilder.showTrackInfo(track, allTracks: tracks, currentIndex: currentIndex)
         }
-        
+
+        @objc func reAnalyzeTrack(_ sender: NSMenuItem) {
+            guard let track = sender.representedObject as? Track else { return }
+            TrackContextMenuBuilder.reAnalyzeTrack(track)
+        }
+
         @objc func toggleFavorite(_ sender: NSMenuItem) {
             guard let track = sender.representedObject as? Track else { return }
             TrackContextMenuBuilder.toggleFavorite(track)
@@ -712,6 +892,8 @@ struct NSTrackTableView: NSViewRepresentable {
             case "codec": comparator = KeyPathComparator(\.sortableCodec, order: order)
             case "dateAdded": comparator = KeyPathComparator(\.sortableDateAdded, order: order)
             case "filename": comparator = KeyPathComparator(\.filename, order: order)
+            case "bpm": comparator = KeyPathComparator(\.sortableBPM, order: order)
+            case "key": comparator = KeyPathComparator(\.sortableKey, order: order)
             default: return
             }
             
@@ -779,6 +961,8 @@ enum ColumnType: String, CaseIterable {
     case trackNumber
     case discNumber
     case duration
+    case bpm
+    case key
     case playCount
     case codec
     case dateAdded
@@ -796,6 +980,8 @@ enum ColumnType: String, CaseIterable {
         case .duration: return "Duration"
         case .playCount: return "Play Count"
         case .codec: return "Codec"
+        case .bpm: return "BPM"
+        case .key: return "Key"
         case .dateAdded: return "Date Added"
         case .filename: return "Filename"
         }
@@ -809,6 +995,8 @@ enum ColumnType: String, CaseIterable {
         case .year: return 60
         case .trackNumber, .discNumber: return 50
         case .duration: return 70
+        case .bpm: return 50
+        case .key: return 50
         case .playCount: return 60
         case .codec: return 60
         case .dateAdded: return 90
@@ -824,6 +1012,8 @@ enum ColumnType: String, CaseIterable {
         case .year: return 80
         case .trackNumber, .discNumber: return 60
         case .duration: return 80
+        case .bpm: return 60
+        case .key: return 60
         case .playCount: return 80
         case .codec: return 80
         case .dateAdded: return 120
@@ -839,6 +1029,7 @@ enum ColumnType: String, CaseIterable {
         case .year: return 100
         case .trackNumber, .discNumber: return 80
         case .duration, .playCount: return 100
+        case .bpm, .key: return 80
         case .codec: return 120
         case .dateAdded: return 150
         }
@@ -898,5 +1089,28 @@ extension Track {
    
    var sortableCodec: String {
        codec ?? ""
+   }
+   
+   var sortableBPM: Double {
+       // First check cached features from audio analysis
+       if let cached = cachedFeatures, let bpm = cached.bpm {
+           return bpm
+       }
+       // Fall back to metadata BPM
+       if let bpm = bpm {
+           return Double(bpm)
+       }
+       // Tracks without BPM sort to the beginning
+       return 0
+   }
+
+   var sortableKey: Int {
+       // Use cached features for sorting
+       if let cached = cachedFeatures, let key = cached.key, let mode = cached.mode {
+           // Use KeyNotation.sortOrder for proper key sorting
+           return KeyNotation.sortOrder(key: key, mode: mode)
+       }
+       // Tracks without key data sort to the end
+       return 999
    }
 }

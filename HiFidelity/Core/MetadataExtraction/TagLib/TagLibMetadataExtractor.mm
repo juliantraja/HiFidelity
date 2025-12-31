@@ -12,6 +12,7 @@
 #include "taglib/tag.h"
 #include "taglib/audioproperties.h"
 #include "taglib/tpropertymap.h"
+#include "taglib/tdebuglistener.h"
 
 // Format-specific headers
 #include "taglib/mpegfile.h"
@@ -75,8 +76,44 @@
 
 @end
 
+// MARK: - Custom TagLib Debug Listener
+
+/// Custom debug listener that filters out deprecation warnings
+class FilteredDebugListener : public TagLib::DebugListener {
+public:
+    void printMessage(const TagLib::String &msg) override {
+        std::string message = msg.to8Bit(true);
+
+        // Filter out known benign warnings
+        if (message.find("no longer supports the frame type TDAT") != std::string::npos) {
+            // Silently ignore TDAT deprecation warnings
+            return;
+        }
+
+        if (message.find("no longer supports the frame type TIME") != std::string::npos) {
+            // Silently ignore TIME deprecation warnings
+            return;
+        }
+
+        // Log other TagLib messages as debug
+        NSLog(@"[TagLib] %s", message.c_str());
+    }
+};
+
+// Global debug listener instance
+static FilteredDebugListener* g_debugListener = nullptr;
 
 @implementation TagLibMetadataExtractor
+
++ (void)initialize {
+    if (self == [TagLibMetadataExtractor class]) {
+        // Set up custom debug listener on first use
+        if (!g_debugListener) {
+            g_debugListener = new FilteredDebugListener();
+            TagLib::setDebugListener(g_debugListener);
+        }
+    }
+}
 
 #pragma mark - Helper Functions
 
@@ -790,9 +827,36 @@ static void ExtractAPEMetadata(TagLib::APE::Tag* tag, TagLibAudioMetadata* metad
         TagLib::MPEG::File mpegFile(filePath);
         if (mpegFile.isValid()) {
             metadata.codec = @"MP3";
-            
+
             if (mpegFile.ID3v2Tag()) {
-                ExtractID3v2Metadata(mpegFile.ID3v2Tag(), metadata);
+                auto id3v2Tag = mpegFile.ID3v2Tag();
+
+                // Upgrade ID3v2.3 tags to ID3v2.4 to resolve deprecated frame warnings
+                if (id3v2Tag->header()->majorVersion() < 4) {
+                    NSLog(@"[TagLib] Upgrading ID3v2.%d tag to v2.4 for: %@",
+                          id3v2Tag->header()->majorVersion(),
+                          [NSString stringWithUTF8String:filePath]);
+
+                    // Convert to ID3v2.4 by saving (TagLib automatically upgrades)
+                    bool saveSuccess = mpegFile.save(TagLib::MPEG::File::ID3v2,
+                                                     TagLib::File::StripOthers,
+                                                     TagLib::ID3v2::v4,
+                                                     TagLib::File::Duplicate);
+
+                    if (saveSuccess) {
+                        NSLog(@"[TagLib] Successfully upgraded ID3v2 tag to v2.4");
+                    } else {
+                        NSLog(@"[TagLib] Failed to upgrade ID3v2 tag");
+                    }
+
+                    // Reload to get the upgraded tag
+                    TagLib::MPEG::File reloadedFile(filePath);
+                    if (reloadedFile.isValid() && reloadedFile.ID3v2Tag()) {
+                        ExtractID3v2Metadata(reloadedFile.ID3v2Tag(), metadata);
+                    }
+                } else {
+                    ExtractID3v2Metadata(id3v2Tag, metadata);
+                }
             }
         }
     }

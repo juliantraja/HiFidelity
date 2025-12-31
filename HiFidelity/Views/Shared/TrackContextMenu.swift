@@ -87,7 +87,11 @@ struct TrackContextMenu: View {
             Button("Get Info") {
                 TrackContextMenuBuilder.showTrackInfo(track)
             }
-            
+
+            Button("Re-Analyze") {
+                TrackContextMenuBuilder.reAnalyzeTrack(track)
+            }
+
             Divider()
             
             // R128 Scanning (only if enabled)

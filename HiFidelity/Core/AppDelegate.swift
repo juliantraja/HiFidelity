@@ -17,7 +17,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         Logger.info("HiFidelity is starting up...")
-        
+        Logger.debug("Note: System messages (task port, ViewBridge) are normal macOS sandbox messages")
+
+        // Suppress SQLite DetachedSignatures warning
+        setenv("SQLITE_OPEN_READONLY", "1", 1)
+
         NSWindow.allowsAutomaticWindowTabbing = false
         
         // Remove unwanted menus

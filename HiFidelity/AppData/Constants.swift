@@ -92,16 +92,22 @@ extension Notification.Name {
     static let foldersDataDidChange = Notification.Name("FoldersDataDidChange")
     static let playlistsDidChange = Notification.Name("PlaylistsDidChange")
     static let playlistCreated = Notification.Name("PlaylistCreated") // Includes playlist object for auto-add functionality
-    
+
     // Navigation
     static let goToLibraryFilter = Notification.Name("GoToLibraryFilter")
     static let goToHome = Notification.Name("GoToHome")
+    static let updateTrackSelection = Notification.Name("UpdateTrackSelection") // Update library view selection
     static let navigateToEntity = Notification.Name("NavigateToEntity")
 
     
     // Playback
     static let playEntityTracks = Notification.Name("playEntityTracks")
     static let playPlaylistTracks = Notification.Name("playPlaylistTracks")
+    static let findSimilarTracks = Notification.Name("FindSimilarTracks") // Includes track ID in userInfo
+    static let similarTracksFilterChanged = Notification.Name("SimilarTracksFilterChanged") // Posted when similar tracks filter is toggled
+
+    // Audio Analysis
+    static let songFeaturesDidUpdate = Notification.Name("SongFeaturesDidUpdate") // Includes trackId in userInfo
     
     // UI
     static let trackTableSortChanged = Notification.Name("trackTableSortChanged")

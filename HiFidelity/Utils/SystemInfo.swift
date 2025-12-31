@@ -29,10 +29,11 @@ final class SystemInfo {
         printAudioDeviceInfo()
         printStorageInfo()
         printAudioFormatsInfo()
-        
+
         Logger.info("═══════════════════════════════════════════════════════════")
         Logger.info("System information gathering complete")
         Logger.info("═══════════════════════════════════════════════════════════")
+        Logger.debug("Note: System messages about DetachedSignatures and task ports are normal macOS sandbox restrictions")
     }
     
     // MARK: - Application Information
@@ -129,7 +130,8 @@ final class SystemInfo {
     
     private static func printAudioDeviceInfo() {
         Logger.info("▶ Audio Device Information:")
-        
+        Logger.debug("Note: Core Audio system messages (AddInstanceForFactory) are normal during device enumeration")
+
         // Output devices
         let outputDevices = getAudioDevices(isInput: false)
         Logger.info("  • Audio Output Devices: \(outputDevices.count)")

@@ -27,6 +27,8 @@ struct TracksTabView: View {
     @State private var selectedTrack: Track.ID?
     @State private var sortOrder: [KeyPathComparator<Track>] = [KeyPathComparator(\Track.title, order: .forward)]
     @State private var selectedFilter: TrackFilter? = nil
+    @State private var similarTracksFilter: [Track]? = nil
+    @State private var isShowingSimilarTracks = false
     
     init(isVisible: Bool = true) {
         self.isVisible = isVisible
@@ -72,9 +74,102 @@ struct TracksTabView: View {
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshLibraryData)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .refreshLibraryData)) { notification in
+            // Try to get trackId from the notification if it was included
+            // This is set when metadata is saved from Track Info panel
+            let trackIdFromNotification = notification.userInfo?["trackId"] as? Int64
+
+            Logger.debug("💾 Starting selection save:")
+            Logger.debug("   selectedTrack UUID: \(String(describing: selectedTrack?.uuidString ?? "nil"))")
+            Logger.debug("   trackId from notification: \(String(describing: trackIdFromNotification))")
+            Logger.debug("   tracks.count: \(tracks.count)")
+            Logger.debug("   sortedTracks.count: \(sortedTracks.count)")
+
+            // Priority 1: Use trackId from notification (when saving metadata)
+            // Priority 2: Find selected track in tracks array (when manually refreshing)
+            let selectedDatabaseId: Int64?
+            if let notificationTrackId = trackIdFromNotification {
+                selectedDatabaseId = notificationTrackId
+                Logger.debug("   ✅ Using trackId from notification: \(notificationTrackId)")
+            } else if let selectedId = selectedTrack {
+                if let foundTrack = tracks.first(where: { $0.id == selectedId }) {
+                    selectedDatabaseId = foundTrack.trackId
+                    Logger.debug("   ✅ Found selected track in tracks array: trackId=\(String(describing: foundTrack.trackId)), title=\(foundTrack.title)")
+                } else if let foundTrack = sortedTracks.first(where: { $0.id == selectedId }) {
+                    selectedDatabaseId = foundTrack.trackId
+                    Logger.debug("   ✅ Found selected track in sortedTracks array: trackId=\(String(describing: foundTrack.trackId)), title=\(foundTrack.title)")
+                } else {
+                    selectedDatabaseId = nil
+                    Logger.debug("   ❌ Selected track UUID exists but not found in any tracks array")
+                }
+            } else {
+                selectedDatabaseId = nil
+                Logger.debug("   ℹ️ No track selected (selectedTrack is nil)")
+            }
+
+            Logger.debug("💾 Final database ID to restore: \(selectedDatabaseId ?? -1)")
+
             Task {
                 await loadTracks()
+                // Wait for filtering/sorting to complete
+                try? await Task.sleep(for: .milliseconds(100))
+
+                // Ensure selection restoration happens on main thread
+                await MainActor.run {
+                    if let databaseId = selectedDatabaseId {
+                        if let restoredTrack = tracks.first(where: { $0.trackId == databaseId }) {
+                            Logger.debug("✅ Restoring selection: trackId=\(databaseId), newId=\(restoredTrack.id)")
+                            Logger.debug("   tracks.count=\(tracks.count), sortedTracks.count=\(sortedTracks.count)")
+                            Logger.debug("   track in sortedTracks: \(sortedTracks.contains(where: { $0.id == restoredTrack.id }))")
+
+                            // Clear selection first to force update
+                            selectedTrack = nil
+                        } else {
+                            Logger.debug("❌ Could not find track with trackId=\(databaseId) in \(tracks.count) tracks")
+                        }
+                    } else {
+                        Logger.debug("ℹ️ No selection to restore (selectedDatabaseId is nil)")
+                    }
+                }
+
+                // Small delay then restore selection
+                try? await Task.sleep(for: .milliseconds(50))
+                await MainActor.run {
+                    if let databaseId = selectedDatabaseId {
+                        if let restoredTrack = tracks.first(where: { $0.trackId == databaseId }) {
+                            Logger.debug("🔵 Setting selection to: \(restoredTrack.id)")
+                            selectedTrack = restoredTrack.id
+                        }
+                    }
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .updateTrackSelection)) { notification in
+            // Update selection when navigating in Track Info panel - use database trackId
+            if let databaseTrackId = notification.userInfo?["databaseTrackId"] as? Int64 {
+                Logger.debug("📍 Updating table selection from Track Info navigation: databaseTrackId=\(databaseTrackId)")
+                // Find the track with this database ID in the current tracks array
+                if let foundTrack = tracks.first(where: { $0.trackId == databaseTrackId }) {
+                    selectedTrack = foundTrack.id
+                    Logger.debug("📍 Selection updated to track with UUID: \(foundTrack.id)")
+                } else {
+                    Logger.debug("📍 Could not find track with databaseTrackId=\(databaseTrackId)")
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .findSimilarTracks)) { notification in
+            if let trackId = notification.userInfo?["trackId"] as? Int64 {
+                let shouldToggle = notification.userInfo?["toggle"] as? Bool ?? false
+
+                if shouldToggle && isShowingSimilarTracks {
+                    // If already showing similar tracks, clear the filter
+                    clearSimilarTracksFilter()
+                } else {
+                    // Otherwise, find similar tracks
+                    Task {
+                        await findSimilarTracks(toTrackId: trackId)
+                    }
+                }
             }
         }
         .onChange(of: sortOrder) { oldValue, newValue in
@@ -101,16 +196,16 @@ struct TracksTabView: View {
             Text("\(sortedTracks.count) tracks")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.secondary)
-                        
+
             Spacer()
-            
+
             // Sort and Filter dropdown
             TrackTableOptionsDropdown(
                 sortOrder: $sortOrder,
                 selectedFilter: $selectedFilter
             )
             .frame(width: 32)
-            
+
             viewToggle
         }
         .padding(.horizontal, 20)
@@ -266,21 +361,40 @@ struct TracksTabView: View {
     // MARK: - Data Loading
     
     private func loadTracks() async {
-        isLoading = true
-        
+        // Use smooth animation to prevent UI blinking
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isLoading = true
+            }
+        }
+
         do {
-            tracks = try await DatabaseCache.shared.getAllTracks(forceRefresh: true)
+            let newTracks = try await DatabaseCache.shared.getAllTracks(forceRefresh: true)
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    tracks = newTracks
+                }
+            }
         } catch {
             Logger.error("Failed to load tracks: \(error)")
         }
-        
-        isLoading = false
+
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isLoading = false
+            }
+        }
     }
     
     // MARK: - Filtering
     
     private func applyFilter() {
-        if let filter = selectedFilter {
+        // Priority: similar tracks filter > selected filter
+        if let similarTracks = similarTracksFilter {
+            filteredTracks = similarTracks
+            isShowingSimilarTracks = true
+        } else if let filter = selectedFilter {
+            isShowingSimilarTracks = false
             switch filter {
             case .favorites:
                 filteredTracks = tracks.filter { $0.isFavorite }
@@ -294,11 +408,65 @@ struct TracksTabView: View {
                 filteredTracks = tracks.filter { $0.playCount == 0 }
             }
         } else {
+            isShowingSimilarTracks = false
             filteredTracks = tracks
         }
         
         // Re-sort after filtering
         initializeSortedTracks()
+    }
+    
+    // MARK: - Similar Tracks
+    
+    private func findSimilarTracks(toTrackId trackId: Int64) async {
+        isLoading = true
+
+        do {
+            // Try to find similar tracks by key and BPM
+            let similarTracks = try await DatabaseManager.shared.findSimilarTracksByKeyAndBPM(
+                toTrackId: trackId,
+                bpmTolerance: 5.0,
+                limit: 100,
+                includeCompatibleKeys: true
+            )
+
+            await MainActor.run {
+                similarTracksFilter = similarTracks
+                applyFilter()
+
+                // Notify that filter is now active
+                NotificationCenter.default.post(
+                    name: .similarTracksFilterChanged,
+                    object: nil,
+                    userInfo: ["trackId": trackId]
+                )
+
+                // Switch to Tracks tab if not already there
+                NotificationCenter.default.post(name: .goToHome, object: nil)
+            }
+        } catch {
+            Logger.error("Failed to find similar tracks: \(error)")
+            await MainActor.run {
+                similarTracksFilter = nil
+                applyFilter()
+            }
+        }
+
+        isLoading = false
+    }
+    
+    /// Clear similar tracks filter
+    private func clearSimilarTracksFilter() {
+        similarTracksFilter = nil
+        isShowingSimilarTracks = false
+        applyFilter()
+
+        // Notify that filter is now cleared
+        NotificationCenter.default.post(
+            name: .similarTracksFilterChanged,
+            object: nil,
+            userInfo: [:] // Empty userInfo means filter is cleared
+        )
     }
     
     // MARK: - Sorting Helpers
@@ -373,6 +541,8 @@ enum TrackSortField: String, Hashable {
     case album
     case genre
     case year
+    case bpm
+    case key
     case duration
     case playCount
     case codec
@@ -380,7 +550,7 @@ enum TrackSortField: String, Hashable {
     case filename
     case trackNumber
     case discNumber
-    
+
     var displayName: String {
         switch self {
         case .title: return "Title"
@@ -388,6 +558,8 @@ enum TrackSortField: String, Hashable {
         case .album: return "Album"
         case .genre: return "Genre"
         case .year: return "Year"
+        case .bpm: return "BPM"
+        case .key: return "Key"
         case .duration: return "Duration"
         case .playCount: return "Play Count"
         case .codec: return "Codec"
@@ -397,18 +569,18 @@ enum TrackSortField: String, Hashable {
         case .discNumber: return "Disc Number"
         }
     }
-    
+
     static var regularFields: [TrackSortField] {
-        [.title, .artist, .album, .genre, .year, .duration, .playCount, .codec, .dateAdded, .filename, .trackNumber, .discNumber]
+        [.title, .artist, .album, .genre, .year, .bpm, .key, .duration, .playCount, .codec, .dateAdded, .filename, .trackNumber, .discNumber]
     }
-    
+
     static var allFields: [TrackSortField] {
-        [.title, .artist, .album, .genre, .year, .duration, .playCount, .codec, .dateAdded, .filename, .trackNumber, .discNumber]
+        [.title, .artist, .album, .genre, .year, .bpm, .key, .duration, .playCount, .codec, .dateAdded, .filename, .trackNumber, .discNumber]
     }
     
     func getComparator(ascending: Bool) -> KeyPathComparator<Track> {
         let order: SortOrder = ascending ? .forward : .reverse
-        
+
         switch self {
         case .title:
             return KeyPathComparator(\Track.title, order: order)
@@ -420,6 +592,10 @@ enum TrackSortField: String, Hashable {
             return KeyPathComparator(\Track.genre, order: order)
         case .year:
             return KeyPathComparator(\Track.year, order: order)
+        case .bpm:
+            return KeyPathComparator(\Track.sortableBPM, order: order)
+        case .key:
+            return KeyPathComparator(\Track.sortableKey, order: order)
         case .duration:
             return KeyPathComparator(\Track.duration, order: order)
         case .playCount:
@@ -452,15 +628,17 @@ struct TrackTableOptionsDropdown: View {
     
     private var currentSortField: TrackSortField {
         guard let firstSort = sortOrder.first else { return .title }
-        
+
         let sortString = String(describing: firstSort)
-        
+
         let sortKeyMap: [String: TrackSortField] = [
             "title": .title,
             "artist": .artist,
             "album": .album,
             "genre": .genre,
             "year": .year,
+            "sortableBPM": .bpm,
+            "sortableKey": .key,
             "duration": .duration,
             "playCount": .playCount,
             "codec": .codec,
@@ -469,13 +647,13 @@ struct TrackTableOptionsDropdown: View {
             "trackNumber": .trackNumber,
             "discNumber": .discNumber,
         ]
-        
+
         for (key, field) in sortKeyMap {
             if sortString.contains(key) {
                 return field
             }
         }
-        
+
         return .title
     }
     

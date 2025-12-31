@@ -81,12 +81,127 @@ class TrackContextMenuBuilder {
         NSWorkspace.shared.activateFileViewerSelecting([track.url])
     }
     
-    static func showTrackInfo(_ track: Track) {
-        // Post notification to show track info
+    static func showTrackInfo(_ track: Track, allTracks: [Track] = [], currentIndex: Int = 0) {
+        // Post notification to show track info with context
         NotificationCenter.default.post(
             name: NSNotification.Name("ShowTrackInfo"),
-            object: track
+            object: track,
+            userInfo: [
+                "allTracks": allTracks,
+                "currentIndex": currentIndex
+            ]
         )
+    }
+
+    static func reAnalyzeTrack(_ track: Track) {
+        guard let trackId = track.trackId else { return }
+
+        Task {
+            do {
+                NotificationManager.shared.addMessage(.info, "Re-analyzing '\(track.title)'...")
+
+                // Step 1: Re-extract metadata from file (like fresh import)
+                let metadata = TagLibMetadataManager.extractMetadata(from: track.url)
+                var updatedTrack = track
+                TagLibMetadataManager.applyMetadata(to: &updatedTrack, from: metadata, at: track.url)
+
+                // Step 2: Analyze audio features with metadata BPM
+                let metadataBPM = metadata.bpm.map { Double($0) }
+                
+                // Calculate dynamic timeout based on track duration (same as regular analysis)
+                let trackDuration = track.duration
+                let timeoutSeconds: TimeInterval
+                if trackDuration > 0 {
+                    // Timeout: 90 seconds base + 30% of track duration, capped at 5 minutes
+                    timeoutSeconds = min(90.0 + (trackDuration * 0.3), 300.0)
+                } else {
+                    // Default to 3 minutes if duration is 0
+                    timeoutSeconds = 180.0
+                }
+                
+                let result = try await withTimeout(seconds: timeoutSeconds) {
+                    try await AudioFeatureAnalyzer.shared.analyzeAudioFile(at: track.url, metadataBPM: metadataBPM) { progress in
+                        Logger.debug("Re-analysis progress: \(Int(progress * 100))%")
+                    }
+                }
+
+                // Step 3: Create SongFeatures object with fresh analysis
+                var features = SongFeatures(
+                    trackId: trackId,
+                    tempo: result.bpm,
+                    key: result.key,
+                    mode: result.mode,
+                    extractedAt: Date(),
+                    extractorVersion: "1.0",
+                    confidence: result.confidence,
+                    needsUpdate: false
+                )
+                features.deriveCamelotKey()
+
+                // Step 3.5: Regenerate waveform
+                do {
+                    let waveform = try await WaveformGenerator.generateWaveform(from: track.url, targetCount: 400)
+                    // Use trackId (database ID) instead of id (ephemeral UUID)
+                    WaveformCache.shared.cacheWaveform(trackId: String(trackId), samples: waveform)
+                    Logger.debug("Waveform regenerated for '\(track.title)'")
+                } catch {
+                    Logger.error("Failed to regenerate waveform for '\(track.title)': \(error)")
+                    // Don't fail the entire re-analyze if waveform fails
+                }
+
+                // Step 4: Update everything in database (metadata + audio features)
+                // Capture immutable copies for the closure
+                let trackToUpdate = updatedTrack
+                let featuresToSave = features
+
+                try await DatabaseManager.shared.dbQueue.write { db in
+                    // Update track metadata
+                    try trackToUpdate.update(db)
+
+                    // Update song features
+                    var mutableFeatures = featuresToSave
+                    try mutableFeatures.insert(db, onConflict: .replace)
+                }
+
+                await MainActor.run {
+                    NotificationManager.shared.addMessage(.info, "Re-analysis complete - BPM: \(result.bpm.map { String(format: "%.0f", $0) } ?? "N/A")")
+                    // Notify UI to refresh
+                    NotificationCenter.default.post(name: .refreshLibraryData, object: nil)
+                    NotificationCenter.default.post(
+                        name: .songFeaturesDidUpdate,
+                        object: trackId,
+                        userInfo: ["trackId": trackId]
+                    )
+                }
+            } catch {
+                Logger.error("Failed to re-analyze track: \(error)")
+                await MainActor.run {
+                    NotificationManager.shared.addMessage(.error, "Failed to re-analyze track")
+                }
+            }
+        }
+    }
+
+    // Helper function for timeout
+    private static func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw AudioAnalysisError.timeout
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
+    enum AudioAnalysisError: Error {
+        case timeout
     }
     
     // MARK: - Favorite Actions

@@ -697,6 +697,9 @@ extension DatabaseManager {
             /// Mode (0 = minor, 1 = major)
             t.column("mode", .integer)
             
+            /// Camelot Wheel key notation (e.g., "5A", "8B") for DJ-style mixing
+            t.column("camelot_key", .text)
+            
             /// Time signature
             t.column("time_signature", .integer)
             

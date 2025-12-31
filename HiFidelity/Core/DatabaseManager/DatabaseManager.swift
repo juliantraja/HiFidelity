@@ -15,6 +15,7 @@
 
 import Foundation
 import GRDB
+import SQLite3
 
 class DatabaseManager: ObservableObject {
     // MARK: - Properties
@@ -41,8 +42,10 @@ class DatabaseManager: ObservableObject {
     // Make init private to prevent multiple instances
     private init() throws {
         // Create database in app support directory
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory,
-                                                  in: .userDomainMask).first!
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory,
+                                                        in: .userDomainMask).first else {
+            throw DatabaseError.migrationFailed("Application Support directory not found")
+        }
         // Use bundle identifier as the folder name
         let bundleID = Bundle.main.bundleIdentifier ?? About.bundleIdentifier
         let appDirectory = appSupport.appendingPathComponent(bundleID, isDirectory: true)

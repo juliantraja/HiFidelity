@@ -74,7 +74,61 @@ struct DatabaseMigrator {
             Logger.info("R128 loudness column added successfully")
         }
         
-        // Add new migrations here as: migrator.registerMigration("v7_description") { db in ... }
+        // v7: Add Camelot key field to song_features table
+        migrator.registerMigration("v7_camelot_key") { db in
+            Logger.info("Adding Camelot key column to song_features...")
+            try db.addColumnIfNotExists(
+                table: "song_features",
+                column: "camelot_key",
+                type: .text
+            )
+            
+            // Create index for efficient Camelot key queries
+            try db.createIndexIfNotExists(
+                name: "idx_song_features_camelot_key",
+                table: "song_features",
+                columns: ["camelot_key"]
+            )
+            
+            // Populate Camelot keys for existing records that have key and mode
+            try db.execute(sql: """
+                UPDATE song_features
+                SET camelot_key = (
+                    CASE
+                        WHEN key = 0 AND mode = 0 THEN '5A'
+                        WHEN key = 0 AND mode = 1 THEN '8B'
+                        WHEN key = 1 AND mode = 0 THEN '12A'
+                        WHEN key = 1 AND mode = 1 THEN '3B'
+                        WHEN key = 2 AND mode = 0 THEN '7A'
+                        WHEN key = 2 AND mode = 1 THEN '10B'
+                        WHEN key = 3 AND mode = 0 THEN '2A'
+                        WHEN key = 3 AND mode = 1 THEN '5B'
+                        WHEN key = 4 AND mode = 0 THEN '9A'
+                        WHEN key = 4 AND mode = 1 THEN '12B'
+                        WHEN key = 5 AND mode = 0 THEN '4A'
+                        WHEN key = 5 AND mode = 1 THEN '7B'
+                        WHEN key = 6 AND mode = 0 THEN '11A'
+                        WHEN key = 6 AND mode = 1 THEN '2B'
+                        WHEN key = 7 AND mode = 0 THEN '6A'
+                        WHEN key = 7 AND mode = 1 THEN '9B'
+                        WHEN key = 8 AND mode = 0 THEN '1A'
+                        WHEN key = 8 AND mode = 1 THEN '4B'
+                        WHEN key = 9 AND mode = 0 THEN '8A'
+                        WHEN key = 9 AND mode = 1 THEN '11B'
+                        WHEN key = 10 AND mode = 0 THEN '3A'
+                        WHEN key = 10 AND mode = 1 THEN '6B'
+                        WHEN key = 11 AND mode = 0 THEN '10A'
+                        WHEN key = 11 AND mode = 1 THEN '1B'
+                        ELSE NULL
+                    END
+                )
+                WHERE key IS NOT NULL AND mode IS NOT NULL AND camelot_key IS NULL
+            """)
+            
+            Logger.info("Camelot key column added and populated successfully")
+        }
+        
+        // Add new migrations here as: migrator.registerMigration("v8_description") { db in ... }
         
         return migrator
     }

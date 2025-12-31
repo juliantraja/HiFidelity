@@ -26,12 +26,18 @@ extension DatabaseManager {
     func processBatch(_ batch: [(url: URL, folderId: Int64)], existingTracks: [URL: Track] = [:]) async throws {
         guard !batch.isEmpty else { return }
        
+        let batchStartTime = Date()
+        Logger.debug("⏱️ [IMPORT] [BATCH] Starting batch processing: \(batch.count) tracks")
+
         let metadataResults = try await withThrowingTaskGroup(
             of: (URL, TrackProcessResult).self
         ) { group in
             for (fileURL, folderId) in batch {
                 group.addTask {
                     do {
+                        let trackStartTime = Date()
+                        Logger.debug("⏱️ [IMPORT] Starting processing: \(fileURL.lastPathComponent)")
+                        
                         // Check if track already exists
                         if let existingTrack = existingTracks[fileURL] {
                             // Check if file was modified
@@ -42,10 +48,16 @@ extension DatabaseManager {
                                 // File was modified, update metadata
                                 if fileModDate > dbModDate {
                                     var updatedTrack = existingTrack
+                                    let metadataStartTime = Date()
+                                    Logger.debug("⏱️ [IMPORT] [METADATA] Starting extraction: \(fileURL.lastPathComponent)")
                                     let metadata = TagLibMetadataManager.extractMetadata(from: fileURL)
+                                    let metadataDuration = Date().timeIntervalSince(metadataStartTime)
+                                    Logger.debug("⏱️ [IMPORT] [METADATA] Completed in \(String(format: "%.3f", metadataDuration))s: \(fileURL.lastPathComponent)")
+                                    
                                     TagLibMetadataManager.applyMetadata(to: &updatedTrack, from: metadata, at: fileURL)
                                     
-                                    Logger.info("File modified, updating metadata: \(fileURL.lastPathComponent)")
+                                    let totalDuration = Date().timeIntervalSince(trackStartTime)
+                                    Logger.info("⏱️ [IMPORT] File modified, updating metadata: \(fileURL.lastPathComponent) (total: \(String(format: "%.3f", totalDuration))s)")
                                     return (fileURL, TrackProcessResult.update(updatedTrack, metadata))
                                 } else {
                                     // File unchanged, skip
@@ -56,9 +68,17 @@ extension DatabaseManager {
                         
                         // New track - extract metadata and prepare for insertion
                         var track = Track(url: fileURL)
+                        let metadataStartTime = Date()
+                        Logger.debug("⏱️ [IMPORT] [METADATA] Starting extraction: \(fileURL.lastPathComponent)")
                         let metadata = TagLibMetadataManager.extractMetadata(from: fileURL)
+                        let metadataDuration = Date().timeIntervalSince(metadataStartTime)
+                        Logger.debug("⏱️ [IMPORT] [METADATA] Completed in \(String(format: "%.3f", metadataDuration))s: \(fileURL.lastPathComponent)")
+                        
                         track.folderId = folderId
                         TagLibMetadataManager.applyMetadata(to: &track, from: metadata, at: fileURL)
+
+                        let totalDuration = Date().timeIntervalSince(trackStartTime)
+                        Logger.debug("⏱️ [IMPORT] Metadata processing complete: \(fileURL.lastPathComponent) (total: \(String(format: "%.3f", totalDuration))s)")
                         
                         return (fileURL, TrackProcessResult.new(track, metadata))
                         
@@ -99,14 +119,24 @@ extension DatabaseManager {
             return
         }
         
-        let (insertedCount, updatedCount) = try await dbQueue.write { [newTracks, updatedTracks] db -> (Int, Int) in
+        let dbStartTime = Date()
+        Logger.debug("⏱️ [IMPORT] [DATABASE] Starting batch write transaction")
+        let (insertedCount, updatedCount, insertedTrackIds) = try await dbQueue.write { [newTracks, updatedTracks] db -> (Int, Int, [Int64]) in
             var inserted = 0
             var updated = 0
+            var trackIds: [Int64] = []
             
             // Insert new tracks
             for (track, metadata) in newTracks {
                 do {
-                    try self.processNewTrack(track, metadata: metadata, in: db)
+                    let trackDbStartTime = Date()
+                    Logger.debug("⏱️ [IMPORT] [DATABASE] Processing new track: \(track.title)")
+                    let trackId = try self.processNewTrack(track, metadata: metadata, in: db)
+                    if let id = trackId {
+                        trackIds.append(id)
+                    }
+                    let trackDbDuration = Date().timeIntervalSince(trackDbStartTime)
+                    Logger.debug("⏱️ [IMPORT] [DATABASE] Track inserted in \(String(format: "%.3f", trackDbDuration))s: \(track.title)")
                     inserted += 1
                 } catch {
                     Logger.error("Failed to insert track '\(track.title)': \(error)")
@@ -116,29 +146,88 @@ extension DatabaseManager {
             // Update existing tracks
             for (track, metadata) in updatedTracks {
                 do {
+                    let trackDbStartTime = Date()
+                    Logger.debug("⏱️ [IMPORT] [DATABASE] Processing updated track: \(track.title)")
                     try self.processUpdatedTrack(track, metadata: metadata, in: db)
+                    let trackDbDuration = Date().timeIntervalSince(trackDbStartTime)
+                    Logger.debug("⏱️ [IMPORT] [DATABASE] Track updated in \(String(format: "%.3f", trackDbDuration))s: \(track.title)")
                     updated += 1
                 } catch {
                     Logger.error("Failed to update track '\(track.title)': \(error)")
                 }
             }
             
-            return (inserted, updated)
+            return (inserted, updated, trackIds)
         }
+        let dbDuration = Date().timeIntervalSince(dbStartTime)
+        Logger.debug("⏱️ [IMPORT] [DATABASE] Batch write transaction completed in \(String(format: "%.3f", dbDuration))s")
         
-        Logger.info("Batch complete: \(insertedCount) inserted, \(updatedCount) updated, \(skippedCount) unchanged")
+        let batchDuration = Date().timeIntervalSince(batchStartTime)
+        Logger.info("⏱️ [IMPORT] [BATCH] Batch complete in \(String(format: "%.3f", batchDuration))s: \(insertedCount) inserted, \(updatedCount) updated, \(skippedCount) unchanged")
+
+        // Queue all new tracks for analysis together (enables parallel processing)
+        if !insertedTrackIds.isEmpty {
+            Logger.debug("⏱️ [IMPORT] [QUEUE] Queuing \(insertedTrackIds.count) tracks for parallel analysis")
+            AudioAnalysisService.shared.queueForAnalysis(trackIds: insertedTrackIds)
+        }
+
+        // Generate waveforms for newly inserted tracks (now they have trackIds from database)
+        if insertedCount > 0 {
+            // Extract URLs before async closure to avoid Swift 6 concurrency capture error
+            let trackPaths = newTracks.map { ($0.0.url.path, $0.0.url) }
+
+            // Collect track IDs and URLs for waveform generation
+            let tracksForWaveform = try await dbQueue.read { db -> [(Int64, URL)] in
+                var result: [(Int64, URL)] = []
+                for (path, url) in trackPaths {
+                    // Query the database to get the trackId that was assigned using path column
+                    if let dbTrack = try Track.filter(Track.Columns.path == path).fetchOne(db),
+                       let trackId = dbTrack.trackId {
+                        result.append((trackId, url))
+                    }
+                }
+                return result
+            }
+
+            if !tracksForWaveform.isEmpty {
+                Logger.info("⏱️ [IMPORT] [WAVEFORM] Queuing generation for \(tracksForWaveform.count) new tracks (background)")
+                // Fire-and-forget: Generate waveforms in background without blocking import
+                for (trackId, url) in tracksForWaveform {
+                    Task.detached(priority: .utility) {
+                        do {
+                            let waveformStartTime = Date()
+                            Logger.debug("⏱️ [IMPORT] [WAVEFORM] Starting: \(url.lastPathComponent)")
+                            let waveform = try await WaveformGenerator.generateWaveform(from: url, targetCount: 400)
+                            let waveformDuration = Date().timeIntervalSince(waveformStartTime)
+                            Logger.debug("⏱️ [IMPORT] [WAVEFORM] Completed in \(String(format: "%.3f", waveformDuration))s: \(url.lastPathComponent)")
+                            
+                            let cacheStartTime = Date()
+                            WaveformCache.shared.cacheWaveform(trackId: String(trackId), samples: waveform)
+                            let cacheDuration = Date().timeIntervalSince(cacheStartTime)
+                            Logger.debug("⏱️ [IMPORT] [WAVEFORM] Cached in \(String(format: "%.3f", cacheDuration))s: \(url.lastPathComponent)")
+                        } catch {
+                            Logger.error("Failed to generate waveform for \(url.lastPathComponent): \(error)")
+                        }
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Track Processing
     
     /// Process a new track with normalized data
-    private func processNewTrack(_ track: Track, metadata: TrackMetadata, in db: Database) throws {
+    /// - Returns: Track ID if inserted, nil if updated or failed
+    private func processNewTrack(_ track: Track, metadata: TrackMetadata, in db: Database) throws -> Int64? {
+        let processStartTime = Date()
         var mutableTrack = track
         
         // Determine where to store artwork based on album validity
         let hasValidAlbum = !track.album.isEmpty && track.album != "Unknown Album"
         
         // Create/get normalized entities and link them
+        let albumStartTime = Date()
+        Logger.debug("⏱️ [IMPORT] [DATABASE] [NORMALIZE] Getting/creating album: \(track.album)")
         mutableTrack.albumId = try DatabaseManager.getOrCreateAlbum(
             in: db,
             title: track.album,
@@ -154,7 +243,11 @@ extension DatabaseManager {
             catalogNumber: metadata.extended.catalogNumber,
             releaseCountry: metadata.extended.releaseCountry
         )
+        let albumDuration = Date().timeIntervalSince(albumStartTime)
+        Logger.debug("⏱️ [IMPORT] [DATABASE] [NORMALIZE] Album operation took \(String(format: "%.3f", albumDuration))s")
         
+        let artistStartTime = Date()
+        Logger.debug("⏱️ [IMPORT] [DATABASE] [NORMALIZE] Getting/creating artist: \(track.artist)")
         mutableTrack.artistId = try DatabaseManager.getOrCreateArtist(
             in: db,
             name: track.artist,
@@ -162,14 +255,21 @@ extension DatabaseManager {
             artistType: metadata.extended.artistType,
             country: metadata.extended.releaseCountry
         )
+        let artistDuration = Date().timeIntervalSince(artistStartTime)
+        Logger.debug("⏱️ [IMPORT] [DATABASE] [NORMALIZE] Artist operation took \(String(format: "%.3f", artistDuration))s")
         
+        let genreStartTime = Date()
+        Logger.debug("⏱️ [IMPORT] [DATABASE] [NORMALIZE] Getting/creating genre: \(track.genre)")
         mutableTrack.genreId = try DatabaseManager.getOrCreateGenre(
             in: db,
             name: track.genre,
             style: nil  // Style is typically not in tags; could be inferred later
         )
+        let genreDuration = Date().timeIntervalSince(genreStartTime)
+        Logger.debug("⏱️ [IMPORT] [DATABASE] [NORMALIZE] Genre operation took \(String(format: "%.3f", genreDuration))s")
         
         // Store artwork appropriately
+        let artworkStartTime = Date()
         if let artworkData = metadata.artworkData {
             let artworkSourceType: String
             if hasValidAlbum, let albumId = mutableTrack.albumId {
@@ -189,16 +289,24 @@ extension DatabaseManager {
                 try storeArtistArtwork(artistId: artistId, artworkData: artworkData, sourceType: artworkSourceType, in: db)
             }
         }
+        let artworkDuration = Date().timeIntervalSince(artworkStartTime)
+        if artworkDuration > 0.001 {
+            Logger.debug("⏱️ [IMPORT] [DATABASE] [ARTWORK] Artwork storage took \(String(format: "%.3f", artworkDuration))s")
+        }
         
         // Check if track with this path already exists (handle race conditions)
+        let insertStartTime = Date()
         if let existingTrack = try Track.filter(Track.Columns.path == mutableTrack.url.path).fetchOne(db) {
             // Track already exists, update it instead
             mutableTrack.trackId = existingTrack.trackId
             try mutableTrack.update(db)
             Logger.info("Updated existing track: \(mutableTrack.title) (ID: \(mutableTrack.trackId ?? -1))")
+            return nil // Return nil for updates
         } else {
             // Insert the track - didInsert() automatically sets trackId
             try mutableTrack.insert(db)
+            let insertDuration = Date().timeIntervalSince(insertStartTime)
+            Logger.debug("⏱️ [IMPORT] [DATABASE] [INSERT] Track insertion took \(String(format: "%.3f", insertDuration))s")
             
             // Verify insertion succeeded
             guard let trackId = mutableTrack.trackId else {
@@ -207,12 +315,15 @@ extension DatabaseManager {
             
             // Note: Statistics are automatically updated by database triggers
             
-            Logger.info("Added new track: \(mutableTrack.title) (ID: \(trackId))")
+            let totalProcessDuration = Date().timeIntervalSince(processStartTime)
+            Logger.info("⏱️ [IMPORT] [DATABASE] Added new track: \(mutableTrack.title) (ID: \(trackId)) - Total DB time: \(String(format: "%.3f", totalProcessDuration))s")
             
             // Log interesting metadata in debug builds
             #if DEBUG
             logTrackMetadata(mutableTrack)
             #endif
+            
+            return trackId // Return trackId for new inserts
         }
     }
     
@@ -286,6 +397,15 @@ extension DatabaseManager {
         // The triggers handle both old and new entity statistics when IDs change
         
         Logger.info("Updated track: \(mutableTrack.title) (ID: \(trackId))")
+        
+        // Queue for audio analysis if features don't exist yet
+        // Check if features already exist
+        Task {
+            let hasFeatures = (try? await DatabaseManager.shared.getSongFeatures(forTrackId: trackId)) != nil
+            if !hasFeatures {
+                AudioAnalysisService.shared.queueForAnalysis(trackId: trackId)
+            }
+        }
     }
     
     // MARK: - Metadata Logging

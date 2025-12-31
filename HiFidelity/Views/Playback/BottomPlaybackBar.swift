@@ -15,8 +15,8 @@ struct BottomPlaybackBar: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Progress bar
-            ProgressBarControl()
+            // Waveform seek bar with finer detail
+            WaveformSeekBar(isCompact: false, targetSampleCount: 400)
                 .zIndex(1)
             
             // Main control bar
@@ -54,6 +54,7 @@ struct BottomPlaybackBar: View {
     
     private var controlBarBackground: some View {
         Color(nsColor: .windowBackgroundColor)
+            .opacity(1.0)  // Fully opaque background
             .overlay(
                 Rectangle()
                     .fill(Color.primary.opacity(0.08))

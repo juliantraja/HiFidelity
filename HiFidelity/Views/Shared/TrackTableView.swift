@@ -15,10 +15,12 @@ struct TrackTableView: View {
     @Binding var sortOrder: [KeyPathComparator<Track>]
     let onPlayTrack: (Track) -> Void
     let isCurrentTrack: (Track) -> Bool
-    
+
     // Optional playlist context
     var playlistContext: NSTrackTableView.PlaylistContext?
-    
+
+    @ObservedObject private var playback = PlaybackController.shared
+
     var body: some View {
         NSTrackTableView(
             tracks: tracks,
@@ -26,7 +28,8 @@ struct TrackTableView: View {
             sortOrder: $sortOrder,
             onPlayTrack: onPlayTrack,
             isCurrentTrack: isCurrentTrack,
-            playlistContext: playlistContext
+            playlistContext: playlistContext,
+            currentTrackPath: playback.currentTrack?.url.path
         )
     }
 }
@@ -40,7 +43,8 @@ struct TrackTableView: View {
         selection: .constant(nil),
         sortOrder: .constant([KeyPathComparator(\Track.title)]),
         onPlayTrack: { _ in },
-        isCurrentTrack: { _ in false }
+        isCurrentTrack: { _ in false },
+        playlistContext: nil
     )
     .environmentObject(DatabaseManager.shared)
     .frame(width: 800, height: 600)

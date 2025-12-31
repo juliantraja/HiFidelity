@@ -26,12 +26,13 @@ struct TrackInfoDisplay: View {
                 HStack(spacing: 4) {
                     trackDetails(for: track)
                     favoriteButton(for: track)
+                    findSimilarButton(for: track)
                 }
             } else {
                 placeholderDetails
             }
         }
-        .frame(minWidth: 200, maxWidth: 240, alignment: .leading)
+        .frame(minWidth: 220, maxWidth: 320, alignment: .leading)
         .onReceive(playback.$currentTrack) { track in
             currentTrack = track
             updateCachedAudioQuality()
@@ -39,6 +40,35 @@ struct TrackInfoDisplay: View {
         .onReceive(playback.$currentStreamInfo) { _ in
             // Also update when streamInfo changes directly
             updateCachedAudioQuality()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .libraryDataDidChange)) { notification in
+            // Update track data when library changes (e.g., artwork updated)
+            if let trackId = notification.userInfo?["trackId"] as? Int64,
+               trackId == currentTrack?.trackId {
+                // Reload the track from database to get updated artwork
+                Task {
+                    if let updatedTrack = try? await DatabaseCache.shared.getTrack(by: trackId, forceRefresh: true) {
+                        await MainActor.run {
+                            // Always update local state for display
+                            currentTrack = updatedTrack
+                            
+                            // Only update playback.currentTrack if the file URL changed (new file)
+                            // If only metadata changed (same URL), don't update to avoid audio glitch
+                            // This prevents the didSet from triggering applyReplayGain which could cause
+                            // stream reload or position reset when writing metadata to playing file
+                            let urlChanged = playback.currentTrack?.url != updatedTrack.url
+                            if urlChanged || playback.currentTrack?.trackId != trackId {
+                                // URL changed (new file) or different track - safe to update
+                                playback.currentTrack = updatedTrack
+                            } else {
+                                // Same file, only metadata changed - update Now Playing info manually
+                                // to refresh artwork without triggering audio side effects
+                                playback.updateNowPlayingInfo()
+                            }
+                        }
+                    }
+                }
+            }
         }
         .onAppear {
             currentTrack = playback.currentTrack
@@ -53,6 +83,7 @@ struct TrackInfoDisplay: View {
         if let track = currentTrack {
             TrackArtworkView(track: track, size: 56, cornerRadius: 6)
                 .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+                .id(track.id)  // Force reload when track instance changes
         } else {
             placeholderArtwork
         }
@@ -75,16 +106,18 @@ struct TrackInfoDisplay: View {
     
     private func trackDetails(for track: Track) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(track.title)
-                .font(.system(size: 12, weight: .semibold))
-                .lineLimit(1)
-                .foregroundColor(.primary)
-            
-            Text(track.artist)
-                .font(.system(size: 12, weight: .medium))
-                .lineLimit(1)
-                .foregroundColor(.secondary.opacity(0.85))
-            
+            ScrollingTextPair(
+                title: track.title,
+                subtitle: track.artist,
+                titleFont: .system(size: 12, weight: .semibold),
+                subtitleFont: .system(size: 12, weight: .medium),
+                titleColor: .primary,
+                subtitleColor: .secondary.opacity(0.85),
+                spacing: 3
+            )
+            .frame(height: 31)  // 14 + 3 + 14
+            .id("\(track.id)-\(track.title)-\(track.artist)")  // Force recreation on track change
+
             // Audio quality info from BASS - uses cached string for performance
             if !cachedAudioQuality.isEmpty {
                 Text(cachedAudioQuality)
@@ -111,6 +144,58 @@ struct TrackInfoDisplay: View {
     
     private func favoriteButton(for track: Track) -> some View {
         FavoriteButton()
+    }
+    
+    // MARK: - Find Similar Button
+    
+    private func findSimilarButton(for track: Track) -> some View {
+        FindSimilarButton(track: track)
+    }
+    
+    private struct FindSimilarButton: View {
+        let track: Track
+        @ObservedObject var theme = AppTheme.shared
+        @State private var isHovered = false
+        @State private var isActive = false
+
+        var body: some View {
+            Button(action: {
+                guard let trackId = track.trackId else { return }
+                // Toggle the filter
+                NotificationCenter.default.post(
+                    name: .findSimilarTracks,
+                    object: nil,
+                    userInfo: ["trackId": trackId, "toggle": true]
+                )
+            }) {
+                Image(systemName: "waveform.path")
+                    .font(.system(size: 16, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundColor(isActive ? .white : (isHovered ? theme.currentTheme.primaryColor : .secondary))
+                    .frame(width: 32, height: 32)
+                    .background(
+                        Circle()
+                            .fill(isActive ? theme.currentTheme.primaryColor : (isHovered ? Color.primary.opacity(0.06) : Color.clear))
+                    )
+                    .scaleEffect(isHovered ? 1.1 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
+                    .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isActive)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                isHovered = hovering
+            }
+            .help(isActive ? "Clear Similar Tracks Filter" : "Find Similar Tracks")
+            .onReceive(NotificationCenter.default.publisher(for: .similarTracksFilterChanged)) { notification in
+                if let trackId = notification.userInfo?["trackId"] as? Int64,
+                   let currentTrackId = track.trackId {
+                    isActive = (trackId == currentTrackId)
+                } else {
+                    isActive = false
+                }
+            }
+        }
     }
     
     private struct FavoriteButton: View {

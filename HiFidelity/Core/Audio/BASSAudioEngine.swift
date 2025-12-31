@@ -77,8 +77,12 @@ class BASSAudioEngine {
             Logger.info("Sample rate synchronization enabled - bit-perfect playback active")
         }
 
-        // Apply user configuration 
+        // Apply user configuration
         applyAudioSettings()
+
+        // Small delay after BASS initialization to let Core Audio settle
+        // This reduces (but may not eliminate) reporter rate-limit warnings
+        Thread.sleep(forTimeInterval: 0.05) // 50ms delay
 
         // Load plugins for extended format support
         loadPlugins()
@@ -139,21 +143,28 @@ class BASSAudioEngine {
     private func applyAudioSettings() {
         // BASS_CONFIG_BUFFER - Playback buffer length in milliseconds
         BASS_SetConfig(DWORD(BASS_CONFIG_BUFFER), DWORD(settings.bufferLength))
-        
+
+        // BASS_CONFIG_UPDATEPERIOD - Reduce update frequency to prevent rate-limit errors
+        // Default is 100ms, increasing to 250ms reduces Core Audio reporter messages
+        BASS_SetConfig(DWORD(BASS_CONFIG_UPDATEPERIOD), 250)
+
+        // BASS_CONFIG_UPDATETHREADS - Limit number of update threads
+        BASS_SetConfig(DWORD(BASS_CONFIG_UPDATETHREADS), 1)
+
         // BASS_CONFIG_FLOATDSP - Let bit depth depend on source file
         // Not forcing floating-point allows bit-perfect playback at native bit depth
         BASS_SetConfig(DWORD(BASS_CONFIG_FLOATDSP), 0)
-        
+
         // BASS_CONFIG_SRC - Sample rate conversion quality
         // Always use high quality as fallback, even in sync mode
         // When device rate matches track rate, no resampling occurs anyway (bit-perfect)
         // This is a safety net if device rate switch fails
         BASS_SetConfig(DWORD(BASS_CONFIG_SRC), 4) // 64-point sinc interpolation
-        
+
         if settings.synchronizeSampleRate {
-            Logger.debug("Applied audio settings: buffer=\(settings.bufferLength)ms, native bit depth, sync mode")
+            Logger.debug("Applied audio settings: buffer=\(settings.bufferLength)ms, update=250ms, native bit depth, sync mode")
         } else {
-            Logger.debug("Applied audio settings: buffer=\(settings.bufferLength)ms, native bit depth, SRC quality=4")
+            Logger.debug("Applied audio settings: buffer=\(settings.bufferLength)ms, update=250ms, native bit depth, SRC quality=4")
         }
     }
     
@@ -431,16 +442,36 @@ class BASSAudioEngine {
                 continue
             }
             
+            // Verify dylib architecture and version before loading
+            if let dylibInfo = getDylibInfo(path: pluginPath) {
+                Logger.debug("\(pluginFile): \(dylibInfo)")
+            }
+            
             // Try to load the plugin
             let plugin = BASS_PluginLoad(pluginPath, 0)
             
             if plugin != 0 {
                 loadedPlugins.append(plugin)
                 loadedCount += 1
+                
+                // Get plugin info if available
+                if let pluginInfo = BASS_PluginGetInfo(plugin) {
+                    let version = pluginInfo.pointee.version
+                    Logger.info("Loaded: \(pluginFile) (version: \(version >> 16).\((version >> 8) & 0xFF).\(version & 0xFF))")
+                } else {
                 Logger.info("Loaded: \(pluginFile)")
+                }
             } else {
                 let errorCode = BASS_ErrorGetCode()
-                Logger.warning("Failed to load \(pluginFile): error \(errorCode)")
+                let errorMsg = getBassErrorMessage(errorCode)
+                Logger.warning("Failed to load \(pluginFile): error \(errorCode) - \(errorMsg)")
+                
+                // Check for common issues
+                if errorCode == 41 { // BASS_ERROR_FILEFORM
+                    Logger.warning("  → Possible architecture mismatch or corrupted dylib")
+                } else if errorCode == 2 { // BASS_ERROR_FILEOPEN
+                    Logger.warning("  → File access issue - check permissions")
+                }
             }
         }
         
@@ -453,6 +484,158 @@ class BASSAudioEngine {
         
         // Log core format support
         Logger.info("Core formats: MP3, MP2, MP1, OGG, WAV, AIFF")
+        
+        // Verify BASS version compatibility
+        let bassVersion = BASS_GetVersion()
+        let major = (bassVersion >> 16) & 0xFF
+        let minor = (bassVersion >> 8) & 0xFF
+        let revision = bassVersion & 0xFF
+        Logger.info("BASS library version: \(major).\(minor).\(revision)")
+    }
+    
+    // MARK: - Dylib Validation
+    
+    /// Get information about a dylib file (architecture, version, etc.)
+    private func getDylibInfo(path: String) -> String? {
+        // Check architecture compatibility
+        #if arch(arm64)
+        let requiredArch = "arm64"
+        #elseif arch(x86_64)
+        let requiredArch = "x86_64"
+        #else
+        let requiredArch = "unknown"
+        #endif
+        
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/file")
+        task.arguments = [path]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                // Check if architecture matches
+                let hasRequiredArch = output.lowercased().contains(requiredArch.lowercased())
+                if !hasRequiredArch && !output.contains("universal") {
+                    Logger.warning("Architecture mismatch: dylib is \(output), app requires \(requiredArch)")
+                }
+                return output
+            }
+        } catch {
+            // Silently fail - file command might not be available
+        }
+        
+        // Fallback: use otool to check architecture
+        return checkDylibArchitecture(path: path, requiredArch: requiredArch)
+    }
+    
+    /// Check dylib architecture using otool
+    private func checkDylibArchitecture(path: String, requiredArch: String) -> String? {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/otool")
+        task.arguments = ["-l", path]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                // Parse architecture from otool output
+                if output.contains("LC_ARCHITECTURE") {
+                    let hasRequiredArch = output.contains(requiredArch)
+                    if !hasRequiredArch {
+                        Logger.warning("Dylib architecture may not match app architecture (\(requiredArch))")
+                    }
+                    return "Architecture: \(requiredArch)"
+                }
+            }
+        } catch {
+            // Silently fail
+        }
+        
+        return nil
+    }
+    
+    /// Get human-readable BASS error message
+    private func getBassErrorMessage(_ code: Int32) -> String {
+        switch code {
+        case 0: return "All is OK"
+        case 1: return "Memory error"
+        case 2: return "File can't be opened"
+        case 3: return "Can't find a free/valid driver"
+        case 4: return "The sample buffer is lost"
+        case 5: return "Invalid handle"
+        case 6: return "Unsupported sample format"
+        case 7: return "Invalid position"
+        case 8: return "BASS_Init has not been successfully called"
+        case 9: return "BASS_Start has not been successfully called"
+        case 10: return "Invalid/unsupported speaker"
+        case 11: return "Invalid tag"
+        case 13: return "Already initialized/paused/whatever"
+        case 14: return "Not paused"
+        case 15: return "Invalid device"
+        case 16: return "Illegal call"
+        case 17: return "DirectSound initialization failed"
+        case 18: return "BASS_Stop has been called and BASS_Start/Update must be called to resume it"
+        case 19: return "Device is busy"
+        case 20: return "A BASS_StreamFree call has been made, after which the handle is no longer valid"
+        case 21: return "The sample rate is not valid"
+        case 22: return "The stream is not a file stream"
+        case 23: return "No hardware voices available"
+        case 24: return "Illegal parameter(s)"
+        case 25: return "No 3D support"
+        case 26: return "No EAX support"
+        case 27: return "Illegal device number"
+        case 28: return "Not playing"
+        case 29: return "Illegal sample rate"
+        case 30: return "The stream is not a file stream"
+        case 31: return "No internet connection could be opened"
+        case 32: return "Couldn't create the file"
+        case 33: return "Effects are not available"
+        case 34: return "The channel is a 'decoding channel'"
+        case 35: return "A sufficient DirectX version is not installed"
+        case 36: return "Connection timedout"
+        case 37: return "Unsupported file format"
+        case 38: return "Unavailable speaker"
+        case 39: return "Invalid BASS version (used by add-ons)"
+        case 40: return "Codec is not available/supported"
+        case 41: return "The file format is not recognized/supported"
+        case 42: return "The sample is not a stream sample"
+        case 43: return "The handle is not a sample handle"
+        case 44: return "EDX: Not enough buffers"
+        case 45: return "EDX: Access denied"
+        case 46: return "EDX: Format is not supported"
+        case 47: return "WASAPI: Device is unavailable"
+        case 48: return "WASAPI: Device is in use"
+        case 49: return "WASAPI: Device is disabled"
+        case 50: return "WASAPI: Device is unplugged"
+        case 51: return "WASAPI: Device is not found"
+        case 52: return "WASAPI: Device is invalid"
+        case 53: return "WASAPI: Device is not initialized"
+        case 54: return "WASAPI: Device is not enabled"
+        case 55: return "WASAPI: Device format is not supported"
+        case 56: return "WASAPI: Device is busy"
+        case 57: return "WASAPI: Device is not available"
+        case 58: return "WASAPI: Device is not found"
+        case 59: return "WASAPI: Device is invalid"
+        case 60: return "WASAPI: Device is not initialized"
+        case 61: return "WASAPI: Device is not enabled"
+        case 62: return "WASAPI: Device format is not supported"
+        case 63: return "WASAPI: Device is busy"
+        case 64: return "WASAPI: Device is not available"
+        default: return "Unknown error (\(code))"
+        }
     }
     
     // MARK: - Playback Control
@@ -517,10 +700,14 @@ class BASSAudioEngine {
         
         // Set up end-of-stream callback
         setupStreamEndCallback()
-        
+
         // Apply audio effects to the new stream
         effectsManager.setStream(currentStream)
-        
+
+        // Small delay to allow Core Audio to process stream setup before playback
+        // This prevents rate-limit errors from rapid BASS operations
+        Thread.sleep(forTimeInterval: 0.015) // 15ms delay
+
         return true
     }
     
@@ -529,7 +716,7 @@ class BASSAudioEngine {
             Logger.error("No stream loaded")
             return false
         }
-        
+
         // Ensure the audio output device is started
         // The output may be paused automatically if the output device becomes unavailable (e.g., disconnected)
         // or after device switches. BASS_Start() resumes the output before playing the channel.
@@ -540,16 +727,20 @@ class BASSAudioEngine {
                 Logger.warning("Failed to start output device: \(errorCode)")
                 // Continue anyway - try to play the channel
             }
+
+            // Small delay to prevent rate-limit errors when starting audio stream
+            // This allows Core Audio to process BASS_Start() before BASS_ChannelPlay()
+            Thread.sleep(forTimeInterval: 0.01) // 10ms delay
         }
-        
+
         let result = BASS_ChannelPlay(currentStream, 0) // 0 = don't restart from beginning
-        
+
         if result == 0 {
             let errorCode = BASS_ErrorGetCode()
             Logger.error("Failed to play stream, error: \(errorCode)")
             return false
         }
-        
+
         Logger.debug("Playing stream")
         return true
     }

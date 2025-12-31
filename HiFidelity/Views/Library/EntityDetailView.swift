@@ -9,7 +9,7 @@ import SwiftUI
 
 /// Generic entity detail view showing tracks
 struct EntityDetailView: View {
-    let entity: EntityType
+    @State private var entity: EntityType
     
     @EnvironmentObject var databaseManager: DatabaseManager
     @ObservedObject var theme = AppTheme.shared
@@ -22,6 +22,8 @@ struct EntityDetailView: View {
     @State private var selectedTrack: Track.ID?
     @State private var sortOrder = [KeyPathComparator(\Track.title, order: .forward)]
     @State private var selectedFilter: TrackFilter?
+    @State private var artistArtwork: NSImage?
+    @State private var artistArtworkToken = UUID()
     
     // Sorting persistence - separate storage for each entity type
     @AppStorage("albumDetailSortField") private var albumSortField: String = "title"
@@ -32,6 +34,10 @@ struct EntityDetailView: View {
     @AppStorage("genreDetailSortAscending") private var genreSortAscending: Bool = true
     @AppStorage("playlistDetailSortField") private var playlistSortField: String = "title"
     @AppStorage("playlistDetailSortAscending") private var playlistSortAscending: Bool = true
+    
+    init(entity: EntityType) {
+        _entity = State(initialValue: entity)
+    }
     
     // Helper computed properties for current entity's sort storage
     private var currentSortField: Binding<String> {
@@ -73,7 +79,9 @@ struct EntityDetailView: View {
                 trackCount: sortedTracks.count,
                 totalDuration: calculateTotalDuration(),
                 onPlay: playAll,
-                onShuffle: shuffleAll
+                onShuffle: shuffleAll,
+                artistArtwork: artistArtwork,
+                artistArtworkToken: artistArtworkToken
             )
             .overlay(alignment: .bottomTrailing) {
                 HStack(spacing: 12) {
@@ -100,6 +108,7 @@ struct EntityDetailView: View {
             // Restore saved sort order for this entity type
             restoreSortOrder()
             await loadTracks()
+            await loadArtistArtwork()
         }
         .onChange(of: sortOrder) { oldValue, newValue in
             if oldValue != newValue {
@@ -114,6 +123,14 @@ struct EntityDetailView: View {
         }
         .onChange(of: selectedFilter) { _, _ in
             applyFilter()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .libraryDataDidChange)) { notification in
+            Task {
+                await handleLibraryDataChange(notification: notification)
+            }
+        }
+        .onChange(of: artistArtworkToken) { _, _ in
+            // Trigger refresh of artist artwork view
         }
     }
     
@@ -197,6 +214,34 @@ struct EntityDetailView: View {
     private func calculateTotalDuration() -> Double {
         sortedTracks.reduce(0) { $0 + ($1.duration) }
     }
+
+    // MARK: - Live Updates
+
+    private func handleLibraryDataChange(notification: Notification) async {
+        guard let trackId = notification.userInfo?["trackId"] as? Int64,
+              let updatedTrack = try? await DatabaseCache.shared.getTrack(by: trackId, forceRefresh: true) else {
+            await loadTracks()
+            return
+        }
+        
+        switch entity {
+        case .album(let album):
+            if let albumId = album.id, albumId == updatedTrack.albumId {
+                await refreshAlbumEntity(albumId: albumId)
+            }
+        case .artist(let artist):
+            if let artistId = artist.id, artistId == updatedTrack.artistId {
+                await refreshArtistEntity(artistId: artistId)
+                await loadArtistArtwork()
+            }
+        case .genre(let genre):
+            if let genreId = genre.id, genreId == updatedTrack.genreId {
+                await refreshGenreEntity(genreId: genreId)
+            }
+        case .playlist:
+            await loadTracks()
+        }
+    }
     
     // MARK: - Data Loading
     
@@ -248,6 +293,45 @@ struct EntityDetailView: View {
             let sorted = tracksToSort.sorted(using: newSortOrder)
             await MainActor.run {
                 self.sortedTracks = sorted
+            }
+        }
+    }
+
+    private func refreshAlbumEntity(albumId: Int64) async {
+        guard let updated = try? await databaseManager.getAlbum(albumId: albumId) else { return }
+        await MainActor.run {
+            entity = .album(updated)
+        }
+        await loadTracks()
+    }
+
+    private func refreshArtistEntity(artistId: Int64) async {
+        guard let updated = try? await databaseManager.getArtist(artistId: artistId) else { return }
+        await MainActor.run {
+            entity = .artist(updated)
+        }
+        await loadTracks()
+    }
+
+    private func refreshGenreEntity(genreId: Int64) async {
+        guard let updated = try? await databaseManager.dbQueue.read({ db in
+            try Genre.fetchOne(db, key: genreId)
+        }) else { return }
+        await MainActor.run {
+            entity = .genre(updated)
+        }
+        await loadTracks()
+    }
+
+    private func loadArtistArtwork() async {
+        guard case .artist(let artist) = entity, let artistId = artist.id else { return }
+        await withCheckedContinuation { continuation in
+            ArtworkCache.shared.getArtistArtwork(for: artistId, size: 160) { image in
+                Task { @MainActor in
+                    self.artistArtwork = image
+                    self.artistArtworkToken = UUID()
+                    continuation.resume()
+                }
             }
         }
     }
@@ -453,6 +537,8 @@ struct EntityHeader: View {
     let totalDuration: Double
     let onPlay: () -> Void
     let onShuffle: () -> Void
+    let artistArtwork: NSImage?
+    let artistArtworkToken: UUID
     
     @ObservedObject var theme = AppTheme.shared
     @State private var isPlayHovered = false
@@ -581,12 +667,23 @@ struct EntityHeader: View {
     private var artworkView: some View {
         ZStack {
             if let imageData = entity.artworkData, let nsImage = NSImage(data: imageData) {
+                let artworkKey = "\(entity.id)-\(imageData.hashValue)"
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 160, height: 160)
                     .cornerRadius(entity.isArtist ? 100 : 12)
                     .shadow(radius: 20)
+                    .id("entity-art-\(artworkKey)")
+            } else if case .artist = entity, let image = artistArtwork {
+                let artworkKey = "\(entity.id)-artist-\(artistArtworkToken)"
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 160, height: 160)
+                    .cornerRadius(100)
+                    .shadow(radius: 20)
+                    .id("entity-art-\(artworkKey)")
             } else if entity.isArtist, let artistId = entity.entityId {
                 ArtistArtworkView(artistId: artistId, size: 160)
                     .shadow(radius: 20)
@@ -694,4 +791,3 @@ struct PlaylistDetailView: View {
         EntityDetailView(entity: .playlist(playlist))
     }
 }
-

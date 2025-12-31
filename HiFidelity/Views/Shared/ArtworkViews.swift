@@ -59,7 +59,7 @@ struct TrackArtworkView: View, Equatable {
                 .fill(Color(nsColor: .controlBackgroundColor))
             
             Image(systemName: "music.note")
-                .font(.system(size: size * 0.4))
+                .font(.system(size: min(size * 0.25, 32)))
                 .foregroundColor(.secondary.opacity(0.5))
         }
     }

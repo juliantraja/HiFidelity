@@ -36,7 +36,8 @@ struct AlbumCard: View, Equatable {
     static func == (lhs: AlbumCard, rhs: AlbumCard) -> Bool {
         lhs.album.id == rhs.album.id &&
         lhs.album.title == rhs.album.title &&
-        lhs.album.displayArtist == rhs.album.displayArtist
+        lhs.album.displayArtist == rhs.album.displayArtist &&
+        lhs.album.artworkData?.hashValue == rhs.album.artworkData?.hashValue
     }
     
     var body: some View {
@@ -46,6 +47,7 @@ struct AlbumCard: View, Equatable {
                 ZStack {
                     if let albumId = album.id {
                         AlbumArtworkView(albumId: albumId, size: 160, cornerRadius: 8)
+                            .id("album-art-\(albumId)-\(album.artworkData?.hashValue ?? 0)")
                             .shadow(color: .black.opacity(isHovered ? 0.25 : 0.15), radius: isHovered ? 12 : 8, y: isHovered ? 6 : 4)
                     } else {
                         RoundedRectangle(cornerRadius: 10)
@@ -118,7 +120,9 @@ struct ArtistCard: View, Equatable {
     static func == (lhs: ArtistCard, rhs: ArtistCard) -> Bool {
         lhs.artist.id == rhs.artist.id &&
         lhs.artist.name == rhs.artist.name &&
-        lhs.artist.trackCount == rhs.artist.trackCount
+        lhs.artist.trackCount == rhs.artist.trackCount &&
+        lhs.artist.artworkData?.hashValue == rhs.artist.artworkData?.hashValue &&
+        lhs.artist.artworkSourceType == rhs.artist.artworkSourceType
     }
     
     var body: some View {
@@ -128,6 +132,7 @@ struct ArtistCard: View, Equatable {
                 ZStack {
                     if let artistId = artist.id {
                         ArtistArtworkView(artistId: artistId, size: 160)
+                            .id("artist-art-\(artistId)-\(artist.artworkData?.hashValue ?? 0)")
                             .shadow(color: .black.opacity(isHovered ? 0.25 : 0.15), radius: isHovered ? 12 : 8, y: isHovered ? 6 : 4)
                     } else {
                         Circle()
@@ -408,4 +413,3 @@ struct TrackGridCard: View, Equatable {
         }
     }
 }
-

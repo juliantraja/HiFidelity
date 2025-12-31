@@ -86,11 +86,38 @@ struct Track: Identifiable, Equatable, Hashable, FetchableRecord, MutablePersist
     
     // R128 Loudness Analysis (for volume normalization)
     var r128IntegratedLoudness: Double? // in LUFS
-    
+
     var filename: String {
         url.lastPathComponent
     }
-    
+
+    // MARK: - Features Cache (for sorting)
+    // These are not persisted, but loaded from song_features for sorting/display
+    private static var featuresCache: [Int64: (bpm: Double?, key: Int?, mode: Int?)] = [:]
+    private static let featuresCacheLock = NSLock()
+
+    /// Get cached features for this track (thread-safe)
+    var cachedFeatures: (bpm: Double?, key: Int?, mode: Int?)? {
+        guard let trackId = trackId else { return nil }
+        Track.featuresCacheLock.lock()
+        defer { Track.featuresCacheLock.unlock() }
+        return Track.featuresCache[trackId]
+    }
+
+    /// Cache features for this track (thread-safe)
+    static func cacheFeatures(trackId: Int64, bpm: Double?, key: Int?, mode: Int?) {
+        featuresCacheLock.lock()
+        defer { featuresCacheLock.unlock() }
+        featuresCache[trackId] = (bpm, key, mode)
+    }
+
+    /// Clear features cache
+    static func clearFeaturesCache() {
+        featuresCacheLock.lock()
+        defer { featuresCacheLock.unlock() }
+        featuresCache.removeAll()
+    }
+
     // MARK: - Initialization
     
     init(url: URL) {
