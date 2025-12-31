@@ -1,3 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>HiFidelity Updates</title>
+    <link>https://juliantraja.github.io/HiFidelity/appcast.xml</link>
+    <description>Release feed for HiFidelity</description>
+    <language>en</language>
+
     <item>
       <title>Version 1.1.1</title>
       <pubDate>Wed, 31 Dec 2025 18:37:35 +0000</pubDate>
@@ -9,3 +19,6 @@
         sparkle:version="111"
         sparkle:shortVersionString="1.1.1" />
     </item>
+
+  </channel>
+</rss>
