@@ -1,11 +1,11 @@
     <item>
-      <title>Version 1.1.0</title>
-      <pubDate>Wed, 31 Dec 2025 18:05:09 +0000</pubDate>
+      <title>Version 1.1.1</title>
+      <pubDate>Wed, 31 Dec 2025 18:37:35 +0000</pubDate>
       <enclosure
-        url="https://juliantraja.github.io/HiFidelity/HiFidelity-1.1.0-110.zip"
-        sparkle:edSignature="1MrcuZ5PKOJtZ/vKNZlU7AwSaBdFzmI0afXafLz+YHaVKyN06R6wa6e6GCF5Trw1Ed6po1hVAx4r+0ARz1VRBA=="
-        length="14619434"
+        url="https://juliantraja.github.io/HiFidelity/HiFidelity-1.1.1-111.zip"
+        sparkle:edSignature="uGJ19kBh0CtwbMIHvnZsG2LIwxISRCGlRk7TT+rKRA+AnTURAAqhtsN87mLrdYoRvYfa5X/NvW8eqVEwwwADDA=="
+        length="14619132"
         type="application/octet-stream"
-        sparkle:version="110"
-        sparkle:shortVersionString="1.1.0" />
+        sparkle:version="111"
+        sparkle:shortVersionString="1.1.1" />
     </item>
