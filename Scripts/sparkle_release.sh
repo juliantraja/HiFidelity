@@ -3,7 +3,8 @@
 set -euo pipefail
 
 # Path to the built .app (set APP_BUNDLE env or pass as first arg).
-APP_BUNDLE="${APP_BUNDLE:-${1:-"HiFidelity 2025-12-31 09-53-03/HiFidelity.app"}}"
+# No hardcoded default to avoid packaging an old export by mistake.
+APP_BUNDLE="${APP_BUNDLE:-${1:-""}}"
 
 # Where Sparkle tools live (adjust if you unpacked elsewhere).
 SPARKLE_BIN="${SPARKLE_BIN:-/tmp/Sparkle-2.8.1/bin}"
@@ -13,6 +14,11 @@ OUT_DIR="${OUT_DIR:-releases}"
 
 # Public URL base where the zip will be hosted (used in the snippet).
 FEED_BASE_URL="${FEED_BASE_URL:-https://juliantraja.github.io/HiFidelity}"
+
+if [[ -z "$APP_BUNDLE" ]]; then
+  echo "APP_BUNDLE not specified. Set APP_BUNDLE env or pass the .app path as first arg." >&2
+  exit 1
+fi
 
 if [[ ! -d "$APP_BUNDLE" ]]; then
   echo "App bundle not found: $APP_BUNDLE" >&2
