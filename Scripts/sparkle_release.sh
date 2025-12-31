@@ -2,8 +2,8 @@
 # Minimal helper to package and sign a Sparkle update for HiFidelity.
 set -euo pipefail
 
-# Path to the built .app (pass as first arg to override).
-APP_BUNDLE="${1:-"HiFidelity 2025-12-31 09-53-03/HiFidelity.app"}"
+# Path to the built .app (set APP_BUNDLE env or pass as first arg).
+APP_BUNDLE="${APP_BUNDLE:-${1:-"HiFidelity 2025-12-31 09-53-03/HiFidelity.app"}}"
 
 # Where Sparkle tools live (adjust if you unpacked elsewhere).
 SPARKLE_BIN="${SPARKLE_BIN:-/tmp/Sparkle-2.8.1/bin}"

@@ -19,8 +19,22 @@ if [[ ! -x "$SPARKLE_BIN/sign_update" ]]; then
   exit 1
 fi
 
-CURR_VER=$(rg "MARKETING_VERSION = " "$PBXPROJ" -m1 | sed -E 's/.*= ([^;]+);/\1/')
-CURR_BUILD=$(rg "CURRENT_PROJECT_VERSION = " "$PBXPROJ" -m1 | sed -E 's/.*= ([^;]+);/\1/')
+# Read current versions without requiring ripgrep
+read_versions() {
+  python3 - "$PBXPROJ" <<'PY'
+import sys, re, pathlib
+pbx = pathlib.Path(sys.argv[1]).read_text()
+def pick(pattern):
+    m = re.search(pattern, pbx)
+    return m.group(1) if m else ""
+ver = pick(r"MARKETING_VERSION = ([^;]+);")
+build = pick(r"CURRENT_PROJECT_VERSION = ([^;]+);")
+print(ver)
+print(build)
+PY
+}
+CURR_VER=$(read_versions | sed -n '1p')
+CURR_BUILD=$(read_versions | sed -n '2p')
 
 if [[ -z "$CURR_VER" ]]; then
   echo "Could not read MARKETING_VERSION from $PBXPROJ" >&2
@@ -62,8 +76,16 @@ text = re.sub(r"CURRENT_PROJECT_VERSION = [^;]+;", f"CURRENT_PROJECT_VERSION = {
 pbx.write_text(text)
 PY
 
+echo "Cleaning extended attributes in derived data (to avoid codesign FinderInfo/resource fork issues)..."
+xattr -cr "$DERIVED_DATA" 2>/dev/null || true
+# Also strip attributes from the workspace itself (helps prevent FinderInfo/resource forks being copied into the product).
+xattr -cr . 2>/dev/null || true
+
+echo "Clearing previous derived data..."
+rm -rf "$DERIVED_DATA"
+
 echo "Building $SCHEME ($CONFIG)..."
-xcodebuild -scheme "$SCHEME" -configuration "$CONFIG" -derivedDataPath "$DERIVED_DATA" -quiet build
+COPYFILE_DISABLE=1 xcodebuild -scheme "$SCHEME" -configuration "$CONFIG" -derivedDataPath "$DERIVED_DATA" -quiet build
 
 APP_BUNDLE="$DERIVED_DATA/Build/Products/$CONFIG/HiFidelity.app"
 if [[ ! -d "$APP_BUNDLE" ]]; then
