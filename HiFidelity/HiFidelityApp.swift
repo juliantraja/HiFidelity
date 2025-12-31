@@ -149,9 +149,7 @@ struct HiFidelityApp: App {
 
     private func checkForUpdatesMenuItem() -> some View {
         Button {
-            if let updater = appDelegate.updaterController?.updater {
-                updater.checkForUpdates()
-            }
+            appDelegate.updaterController.updater.checkForUpdates()
         } label: {
             Text("Check for Updates...")
         }

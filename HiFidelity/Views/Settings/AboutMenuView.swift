@@ -101,11 +101,7 @@ struct AboutMenuView: View {
         }
 
         let updater = appDelegate.updaterController.updater
-        if updater != nil {
-            updater.checkForUpdates()
-        } else {
-            showUpdaterUnavailableAlert()
-        }
+        updater.checkForUpdates()
     }
 
     private func showUpdaterUnavailableAlert() {
