@@ -11,7 +11,14 @@ import Sparkle
 
 /// AppDelegate handles application lifecycle events and macOS-specific functionality
 class AppDelegate: NSObject, NSApplicationDelegate {
-    internal var updaterController: SPUStandardUpdaterController?
+    // Sparkle updater is initialized lazily so it's always available for manual checks.
+    internal lazy var updaterController: SPUStandardUpdaterController = {
+        SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+    }()
     
     // MARK: - Application Lifecycle
     
@@ -33,12 +40,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await AppCoordinator.shared?.initializeApp()
         }
-        
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil
-        )
         
         // Restore miniplayer if it was open when the app closed
         restoreMiniPlayerState()
@@ -152,4 +153,3 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 }
-

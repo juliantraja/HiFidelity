@@ -82,7 +82,38 @@ struct AboutMenuView: View {
                         updater.automaticallyChecksForUpdates = newValue
                     }
                 }
+
+            Button {
+                triggerManualUpdateCheck()
+            } label: {
+                Text("Check for Updates…")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Manually check for the latest available version")
         }
+    }
+
+    private func triggerManualUpdateCheck() {
+        guard let appDelegate = NSApp.delegate as? AppDelegate else {
+            showUpdaterUnavailableAlert()
+            return
+        }
+
+        let updater = appDelegate.updaterController.updater
+        if updater != nil {
+            updater.checkForUpdates()
+        } else {
+            showUpdaterUnavailableAlert()
+        }
+    }
+
+    private func showUpdaterUnavailableAlert() {
+            let alert = NSAlert()
+            alert.messageText = "Update check unavailable"
+            alert.informativeText = "The updater is not initialized. Please relaunch the app and try again."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
     }
 
     // MARK: - Library Statistics Section
