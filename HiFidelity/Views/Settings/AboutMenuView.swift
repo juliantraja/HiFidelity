@@ -77,8 +77,8 @@ struct AboutMenuView: View {
             Toggle("Check for updates automatically", isOn: $automaticUpdatesEnabled)
                 .help("Automatically download and install updates when available")
                 .onChange(of: automaticUpdatesEnabled) { _, newValue in
-                    if let appDelegate = NSApp.delegate as? AppDelegate,
-                       let updater = appDelegate.updaterController?.updater {
+                    if let appDelegate = NSApp.delegate as? AppDelegate {
+                        let updater = appDelegate.updaterController.updater
                         updater.automaticallyChecksForUpdates = newValue
                     }
                 }
@@ -253,3 +253,4 @@ struct AboutMenuView: View {
     }
     .frame(width: 600, height: 500)
 }
+
