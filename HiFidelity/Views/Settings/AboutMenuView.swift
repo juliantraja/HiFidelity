@@ -70,7 +70,7 @@ struct AboutMenuView: View {
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text(AppInfo.version)
+            Text(AppInfo.versionWithBuild)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
