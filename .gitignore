@@ -1,0 +1,17 @@
+# macOS metadata
+.DS_Store
+
+# Xcode user data and derived data
+DerivedData/
+build/
+HiFidelity.xcodeproj/xcuserdata/
+HiFidelity.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcuserstate
+
+# Local build archives / dated build folders
+HiFidelity *.xcarchive
+HiFidelity 20*/
+
+# Sparkle release artifacts (keep locally, publish separately)
+releases/*.zip
+releases/appcast-item-*.xml
