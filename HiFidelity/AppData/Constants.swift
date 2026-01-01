@@ -3,6 +3,7 @@
 //  HiFidelity
 //
 //  Created by Varun Rathod on 21/10/25.
+//  Fork maintained by Julian Traja.
 //
 
 import Foundation
@@ -72,14 +73,14 @@ struct AudioFormat {
 // MARK: - About
 
 enum About {
-    static let bundleIdentifier = "vr.HiFidelity"
+    static let bundleIdentifier = "jt.HiFidelity"  // Fork: Changed from vr.HiFidelity
     static let appTitle = "HiFidelity"
     static let bundleName = "hifidelity"
-    static let appWebsite = "https://github.com/rvarunrathod/HiFidelity"
-    static let appWiki = "https://github.com/rvarunrathod/HiFidelity/wiki"
-    static let sponsor = "https://github.com/sponsors/rvarunrathod"
-    static let appVersion = "1.0.8"
-    static let appBuild = "108"
+    static let appWebsite = "https://github.com/juliantraja/HiFidelity"
+    static let appWiki = "https://github.com/juliantraja/HiFidelity/wiki"
+    static let sponsor = "https://github.com/sponsors/rvarunrathod"  // Original creator's sponsor link
+    static let appVersion = "1.0.9"  // Fallback - should match Xcode MARKETING_VERSION
+    static let appBuild = "109"      // Fallback - should match Xcode CURRENT_PROJECT_VERSION
 }
 
 

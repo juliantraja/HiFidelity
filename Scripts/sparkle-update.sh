@@ -101,6 +101,45 @@ PLIST="$APP_BUNDLE/Contents/Info.plist"
 SHORT_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
 BUILD_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")
 
+# Sync Constants.swift with version from app bundle
+update_constants_swift() {
+  local version="$1"
+  local build="$2"
+  local constants_file="$PROJECT_ROOT/HiFidelity/AppData/Constants.swift"
+  
+  if [[ ! -f "$constants_file" ]]; then
+    echo "⚠️  Constants.swift not found, skipping update"
+    return
+  fi
+  
+  # Check if Constants.swift needs updating
+  local current_version=$(grep -o 'static let appVersion = "[^"]*"' "$constants_file" | sed 's/.*"\(.*\)".*/\1/')
+  local current_build=$(grep -o 'static let appBuild = "[^"]*"' "$constants_file" | sed 's/.*"\(.*\)".*/\1/')
+  
+  if [[ "$current_version" == "$version" && "$current_build" == "$build" ]]; then
+    echo "✅ Constants.swift already up to date ($version/$build)"
+    return
+  fi
+  
+  # Update Constants.swift
+  echo "🔄 Syncing Constants.swift with app bundle version ($version/$build)..."
+  
+  # Update appVersion and appBuild
+  sed -i '' "s/static let appVersion = \"[^\"]*\"/static let appVersion = \"$version\"/" "$constants_file"
+  sed -i '' "s/static let appBuild = \"[^\"]*\"/static let appBuild = \"$build\"/" "$constants_file"
+  
+  # Verify update
+  if grep -q "static let appVersion = \"$version\"" "$constants_file" && \
+     grep -q "static let appBuild = \"$build\"" "$constants_file"; then
+    echo "✅ Constants.swift updated successfully"
+  else
+    echo "⚠️  Failed to verify Constants.swift update"
+  fi
+}
+
+# Sync Constants.swift before creating Sparkle update
+update_constants_swift "$SHORT_VER" "$BUILD_VER"
+
 ZIP_NAME="HiFidelity-${SHORT_VER}-${BUILD_VER}.zip"
 ZIP_PATH="$OUT_DIR/$ZIP_NAME"
 SNIPPET_PATH="$OUT_DIR/appcast-item-${SHORT_VER}-${BUILD_VER}.xml"

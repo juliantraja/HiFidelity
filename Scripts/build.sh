@@ -578,8 +578,52 @@ else
     fi
 fi
 
+# Update Constants.swift to match Xcode project version
+update_constants_swift() {
+    local version="$1"
+    local build="$2"
+    local constants_file="HiFidelity/AppData/Constants.swift"
+    
+    # Use PROJECT_ROOT if set, otherwise assume current directory
+    if [ -n "${PROJECT_ROOT:-}" ]; then
+        constants_file="$PROJECT_ROOT/$constants_file"
+    fi
+    
+    if [ ! -f "$constants_file" ]; then
+        warning "Constants.swift not found, skipping update"
+        return
+    fi
+    
+    # Check if Constants.swift needs updating
+    local current_version=$(grep -o 'static let appVersion = "[^"]*"' "$constants_file" | sed 's/.*"\(.*\)".*/\1/')
+    local current_build=$(grep -o 'static let appBuild = "[^"]*"' "$constants_file" | sed 's/.*"\(.*\)".*/\1/')
+    
+    if [ "$current_version" = "$version" ] && [ "$current_build" = "$build" ]; then
+        log "Constants.swift already up to date ($version/$build)"
+        return
+    fi
+    
+    # Update Constants.swift
+    log "Syncing Constants.swift with Xcode project ($version/$build)..."
+    
+    # Update appVersion and appBuild (macOS sed syntax)
+    sed -i '' "s/static let appVersion = \"[^\"]*\"/static let appVersion = \"$version\"/" "$constants_file"
+    sed -i '' "s/static let appBuild = \"[^\"]*\"/static let appBuild = \"$build\"/" "$constants_file"
+    
+    # Verify update
+    if grep -q "static let appVersion = \"$version\"" "$constants_file" && \
+       grep -q "static let appBuild = \"$build\"" "$constants_file"; then
+        log "Constants.swift updated successfully"
+    else
+        warning "Failed to verify Constants.swift update"
+    fi
+}
+
 # Setup paths
 BUILD_DIR="build"
+
+# Sync Constants.swift with Xcode project version
+update_constants_swift "$VERSION" "$BUILD_NUMBER"
 
 # Prepare build directory
 log "Building $APP_NAME version $VERSION (Build $BUILD_NUMBER)"

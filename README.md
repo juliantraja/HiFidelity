@@ -4,28 +4,31 @@
 <div>
 <h3>HiFidelity</h3>
 <p>A modern, offline-first audiophile music player for macOS with high-fidelity audio playback</p>
-<a href="https://github.com/rvarunrathod/HiFidelity/releases/latest"><img src="docs/assets/macos_download.png" width="140" alt="Download for macOS"/></a>
+<a href="https://github.com/juliantraja/HiFidelity/releases/latest"><img src="docs/assets/macos_download.png" width="140" alt="Download for macOS"/></a>
 </div>
+
+> **Note**: This is a fork of [rvarunrathod/HiFidelity](https://github.com/rvarunrathod/HiFidelity).  
+> Original project by [Varun Rathod](https://github.com/rvarunrathod). This fork is maintained by [Julian Traja](https://github.com/juliantraja).
 
 <br/><br/>
 
 <p align="center">
-  <a href="https://github.com/rvarunrathod/HiFidelity/releases">
-    <img alt="GitHub Downloads (all assets, all releases)" src="https://img.shields.io/github/downloads/rvarunrathod/HiFidelity/total?label=Downloads&style=flat-square&color=blue">
+  <a href="https://github.com/juliantraja/HiFidelity/releases">
+    <img alt="GitHub Downloads (all assets, all releases)" src="https://img.shields.io/github/downloads/juliantraja/HiFidelity/total?label=Downloads&style=flat-square&color=blue">
   </a>
-  <a href="https://github.com/rvarunrathod/HiFidelity/blob/main/LICENSE">
-    <img alt="License" src="https://img.shields.io/github/license/rvarunrathod/HiFidelity?label=License&style=flat-square&color=00796b">
+  <a href="https://github.com/juliantraja/HiFidelity/blob/main/LICENSE">
+    <img alt="License" src="https://img.shields.io/github/license/juliantraja/HiFidelity?label=License&style=flat-square&color=00796b">
   </a>
-  <a href="https://github.com/rvarunrathod/HiFidelity/releases/latest">
-    <img alt="Latest Release" src="https://img.shields.io/github/v/release/rvarunrathod/HiFidelity?label=Latest%20Release&style=flat-square&color=00796b">
+  <a href="https://github.com/juliantraja/HiFidelity/releases/latest">
+    <img alt="Latest Release" src="https://img.shields.io/github/v/release/juliantraja/HiFidelity?label=Latest%20Release&style=flat-square&color=00796b">
   </a>
-  <a href="https://github.com/rvarunrathod/HiFidelity/">
+  <a href="https://github.com/juliantraja/HiFidelity/">
     <img src="https://img.shields.io/badge/platform-macOS-blue.svg?label=Platform&style=flat-square&logo=apple" alt="Platform"/>
   </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/rvarunrathod/HiFidelity/stargazers">
+  <a href="https://github.com/juliantraja/HiFidelity/stargazers">
     <img src="https://img.shields.io/badge/⭐%20Give%20a%20Star-Support%20the%20project-orange?style=for-the-badge" alt="Give a Star">
   </a>
 </p>
@@ -75,10 +78,10 @@
 
 ## 🔮 Upcoming Features
 
-- ~~Automatic scanning and updating of the music library~~ ( ✅ [1.0.4](https://github.com/rvarunrathod/HiFidelity/releases/tag/v1.0.4) )
-- ~~A compact Mini Player mode~~ ( ✅ [1.0.5](https://github.com/rvarunrathod/HiFidelity/releases/tag/v1.0.5) )
-- ~~Let user change audio output device from UI~~ ( ✅ [1.0.6](https://github.com/rvarunrathod/HiFidelity/releases/tag/v1.0.6) ) 
-- ~~ReplayGain and volume normalization~~ ( ✅ [1.0.8](https://github.com/rvarunrathod/HiFidelity/releases/tag/v1.0.8) ) 
+- ~~Automatic scanning and updating of the music library~~ ( ✅ [1.0.4](https://github.com/juliantraja/HiFidelity/releases/tag/v1.0.4) )
+- ~~A compact Mini Player mode~~ ( ✅ [1.0.5](https://github.com/juliantraja/HiFidelity/releases/tag/v1.0.5) )
+- ~~Let user change audio output device from UI~~ ( ✅ [1.0.6](https://github.com/juliantraja/HiFidelity/releases/tag/v1.0.6) ) 
+- ~~ReplayGain and volume normalization~~ ( ✅ [1.0.8](https://github.com/juliantraja/HiFidelity/releases/tag/v1.0.8) ) 
 - Audio visualizers (waveform / spectrum)
 - ... 
 
@@ -124,17 +127,10 @@
 
 ## 📥 Installation
 
-#### 🍺 Install via Homebrew (Recommended)
-
-```bash
-brew tap rvarunrathod/tap
-brew install --cask rvarunrathod/tap/hifidelity
-```
-
 #### Download for macOS
   
 - You can download the latest signed macOS build from the Releases page:
-- **[Download Latest Release](https://github.com/rvarunrathod/HiFidelity/releases/latest)**
+- **[Download Latest Release](https://github.com/juliantraja/HiFidelity/releases/latest)**
 - After downloading, move **HiFidelity.app** to your **Applications** folder.
   
 #### First Launch?

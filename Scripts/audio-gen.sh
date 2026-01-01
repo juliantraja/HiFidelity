@@ -3,6 +3,7 @@
 #  HiFidelity
 #
 #  Created by Varun Rathod on 24/11/25.
+#  Fork maintained by Julian Traja.
 
 
 #!/bin/bash
