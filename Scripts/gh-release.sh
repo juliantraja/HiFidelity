@@ -298,7 +298,7 @@ create_release_gh_cli() {
     # Create release (without --json for compatibility with older gh versions)
     local output
     output=$(gh release create "$tag" \
-        --title "HiFidelity ${VERSION}" \
+        --title "$tag" \
         --notes "$notes" \
         $draft_flag \
         $prerelease_flag \
@@ -356,7 +356,7 @@ create_release_api() {
         "https://api.github.com/repos/${REPO}/releases" \
         -d "{
             \"tag_name\": \"${tag}\",
-            \"name\": \"HiFidelity ${VERSION}\",
+            \"name\": \"${tag}\",
             \"body\": ${escaped_notes},
             \"draft\": ${draft_flag},
             \"prerelease\": ${prerelease_flag}

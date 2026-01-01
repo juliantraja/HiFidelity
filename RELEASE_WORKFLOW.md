@@ -82,8 +82,8 @@ This creates the zip file and updates the appcast.xml for in-app updates.
 This creates a release on GitHub with your zip file attached.
 
 ```bash
-./Scripts/gh-release.sh --version 1.4.4 \
-  --asset "releases/HiFidelity-1.4.4-144.zip" \
+./Scripts/gh-release.sh --version 1.0.9 \
+  --asset "releases/HiFidelity-1.0.9-109.zip" \
   --changelog "Your release notes here
 
 ## What's New
