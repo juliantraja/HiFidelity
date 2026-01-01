@@ -63,7 +63,16 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # Configuration (can be overridden with environment variables)
-SPARKLE_BIN="${SPARKLE_BIN:-/tmp/Sparkle-2.8.1/bin}"
+# Try to find Sparkle tools in common locations
+if [[ -z "${SPARKLE_BIN:-}" ]]; then
+  if [[ -x "/opt/homebrew/Caskroom/sparkle/2.8.1/bin/sign_update" ]]; then
+    SPARKLE_BIN="/opt/homebrew/Caskroom/sparkle/2.8.1/bin"
+  elif [[ -x "/tmp/Sparkle-2.8.1/bin/sign_update" ]]; then
+    SPARKLE_BIN="/tmp/Sparkle-2.8.1/bin"
+  else
+    SPARKLE_BIN="/tmp/Sparkle-2.8.1/bin"  # Default fallback
+  fi
+fi
 OUT_DIR="${OUT_DIR:-releases}"
 FEED_BASE_URL="${FEED_BASE_URL:-https://juliantraja.github.io/HiFidelity}"
 
