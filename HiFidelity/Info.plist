@@ -47,5 +47,7 @@
 	<string>https://juliantraja.github.io/HiFidelity/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>9I1bI76aeX2SIBZDknGzNeQHQ1jrdJ7D0mlQNphAH0U=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 </dict>
 </plist>

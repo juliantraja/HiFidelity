@@ -11,6 +11,9 @@ import Sparkle
 
 /// AppDelegate handles application lifecycle events and macOS-specific functionality
 class AppDelegate: NSObject, NSApplicationDelegate {
+    // Shared instance for accessing from SwiftUI views
+    private(set) static var shared: AppDelegate?
+    
     // Sparkle updater is initialized lazily so it's always available for manual checks.
     internal lazy var updaterController: SPUStandardUpdaterController = {
         SPUStandardUpdaterController(
@@ -19,6 +22,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             userDriverDelegate: nil
         )
     }()
+    
+    override init() {
+        super.init()
+        Self.shared = self
+    }
     
     // MARK: - Application Lifecycle
     

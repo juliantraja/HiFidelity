@@ -77,7 +77,7 @@ struct AboutMenuView: View {
             Toggle("Check for updates automatically", isOn: $automaticUpdatesEnabled)
                 .help("Automatically download and install updates when available")
                 .onChange(of: automaticUpdatesEnabled) { _, newValue in
-                    if let appDelegate = NSApp.delegate as? AppDelegate {
+                    if let appDelegate = AppDelegate.shared {
                         let updater = appDelegate.updaterController.updater
                         updater.automaticallyChecksForUpdates = newValue
                     }
@@ -95,7 +95,7 @@ struct AboutMenuView: View {
     }
 
     private func triggerManualUpdateCheck() {
-        guard let appDelegate = NSApp.delegate as? AppDelegate else {
+        guard let appDelegate = AppDelegate.shared else {
             showUpdaterUnavailableAlert()
             return
         }
