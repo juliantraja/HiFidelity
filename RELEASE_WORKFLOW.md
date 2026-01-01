@@ -24,8 +24,8 @@ Before you start, make sure you have:
 3. Select the **HiFidelity** target
 4. Go to the **General** tab
 5. Update:
-   - **Marketing Version**: `1.4.4` (or your new version)
-   - **Current Project Version**: `144` (or your build number)
+   - **Marketing Version**: `1.0.10` (or your new version)
+   - **Current Project Version**: `1010` (or your build number)
 6. **Save** the project
 
 ### Step 2: Build and Archive in Xcode
@@ -37,7 +37,7 @@ Before you start, make sure you have:
 5. Choose **Copy App** (for local distribution)
 6. Click **Next** and select your signing options
 7. Click **Export**
-8. Choose a location to save (e.g., `Desktop/HiFidelity-1.4.4`)
+8. Choose a location to save (e.g., `Desktop/HiFidelity-1.0.10`)
 9. Click **Export**
 
 ### Step 3: Prepare App Bundle
@@ -46,14 +46,14 @@ Before you start, make sure you have:
 2. Copy the `HiFidelity.app` bundle to the Exports folder:
 
    ```bash
-   cp -R "Desktop/HiFidelity-1.4.4/HiFidelity.app" "Exports/HiFidelity v1.4.4/"
+   cp -R "Desktop/HiFidelity-1.0.10/HiFidelity.app" "Exports/HiFidelity v1.0.10/"
    ```
 
    Or create the folder and copy manually:
 
    ```bash
-   mkdir -p "Exports/HiFidelity v1.4.4"
-   cp -R "path/to/exported/HiFidelity.app" "Exports/HiFidelity v1.4.4/"
+   mkdir -p "Exports/HiFidelity v1.0.10"
+   cp -R "path/to/exported/HiFidelity.app" "Exports/HiFidelity v1.0.10/"
    ```
 
 ### Step 4: Create Sparkle Update (Auto-Update System)
@@ -61,20 +61,20 @@ Before you start, make sure you have:
 This creates the zip file and updates the appcast.xml for in-app updates.
 
 ```bash
-./Scripts/sparkle-update.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
+./Scripts/sparkle-update.sh "Exports/HiFidelity v1.0.10/HiFidelity.app"
 ```
 
 **What this does:**
 
-- ✅ Creates a signed zip file: `releases/HiFidelity-1.4.4-144.zip`
+- ✅ Creates a signed zip file: `releases/HiFidelity-1.0.10-1010.zip`
 - ✅ Copies zip to `docs/` folder
 - ✅ Updates `docs/appcast.xml` with the new version
 - ✅ Signs the update with Sparkle
 
 **Output:**
 
-- `releases/HiFidelity-1.4.4-144.zip`
-- `docs/HiFidelity-1.4.4-144.zip`
+- `releases/HiFidelity-1.0.10-1010.zip`
+- `docs/HiFidelity-1.0.10-1010.zip`
 - `docs/appcast.xml` (updated)
 
 ### Step 5: Create GitHub Release
@@ -98,7 +98,7 @@ This creates a release on GitHub with your zip file attached.
 
 **What this does:**
 
-- ✅ Creates a GitHub release with tag `v1.4.4`
+- ✅ Creates a GitHub release with tag `v1.0.10`
 - ✅ Uploads the zip file as a release asset
 - ✅ Sets your custom release notes
 
@@ -163,17 +163,17 @@ git push
 ### Just Sparkle Update (No GitHub Release)
 
 ```bash
-./Scripts/sparkle-update.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
-git add docs/appcast.xml docs/HiFidelity-1.4.4-144.zip
-git commit -m "Publish 1.4.4 Sparkle update"
+./Scripts/sparkle-update.sh "Exports/HiFidelity v1.0.10/HiFidelity.app"
+git add docs/appcast.xml docs/HiFidelity-1.0.10-1010.zip
+git commit -m "Publish 1.0.10 Sparkle update"
 git push
 ```
 
 ### Just GitHub Release (No Sparkle)
 
 ```bash
-./Scripts/gh-release.sh --version 1.4.4 \
-  --asset "releases/HiFidelity-1.4.4-144.zip" \
+./Scripts/gh-release.sh --version 1.0.10 \
+  --asset "releases/HiFidelity-1.0.10-1010.zip" \
   --changelog "Your release notes"
 ```
 
@@ -209,7 +209,7 @@ git push
 
 - Make sure the path is correct
 - Use absolute path: `./Scripts/sparkle-update.sh "/full/path/to/HiFidelity.app"`
-- Check that the app bundle exists: `ls -la "Exports/HiFidelity v1.4.4/HiFidelity.app"`
+- Check that the app bundle exists: `ls -la "Exports/HiFidelity v1.0.10/HiFidelity.app"`
 
 ### "Release already exists" Error
 
@@ -217,8 +217,8 @@ git push
 
 **Solution:**
 
-- Delete the existing release: `gh release delete v1.4.4 --repo juliantraja/HiFidelity --yes`
-- Or update it: `gh release edit v1.4.4 --notes "New notes" --repo juliantraja/HiFidelity`
+- Delete the existing release: `gh release delete v1.0.10 --repo juliantraja/HiFidelity --yes`
+- Or update it: `gh release edit v1.0.10 --notes "New notes" --repo juliantraja/HiFidelity`
 
 ### "GitHub CLI not authenticated" Error
 
@@ -251,7 +251,7 @@ brew install --cask sparkle
 **Solution:**
 
 - Double-check Marketing Version and Build Number in Xcode
-- Make sure they match your release command: `--version 1.4.4` and build `144`
+- Make sure they match your release command: `--version 1.0.10` and build `1010`
 
 ---
 
@@ -270,28 +270,28 @@ brew install --cask sparkle
 3. **Build Numbers**: Increment build number for each release (even if version stays the same)
 4. **Release Notes**: Write clear, user-friendly release notes
 5. **Backup**: Keep exported apps in `Exports/` folder as backups
-6. **Git Tags**: The script automatically creates git tags (e.g., `v1.4.4`)
+6. **Git Tags**: The script automatically creates git tags (e.g., `v1.0.10`)
 
 ---
 
-## 🎯 Example: Complete Release for v1.4.4
+## 🎯 Example: Complete Release for v1.0.10
 
 ```bash
-# 1. Update version in Xcode (1.4.4, build 144)
+# 1. Update version in Xcode (1.0.10, build 1010)
 # 2. Archive in Xcode (Product → Archive)
 # 3. Export app to Desktop
 
 # 4. Copy to Exports
-mkdir -p "Exports/HiFidelity v1.4.4"
-cp -R "Desktop/HiFidelity-1.4.4/HiFidelity.app" "Exports/HiFidelity v1.4.4/"
+mkdir -p "Exports/HiFidelity v1.0.10"
+cp -R "Desktop/HiFidelity-1.0.10/HiFidelity.app" "Exports/HiFidelity v1.0.10/"
 
 # 5. Create Sparkle update
-./Scripts/sparkle-update.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
+./Scripts/sparkle-update.sh "Exports/HiFidelity v1.0.10/HiFidelity.app"
 
 # 6. Create GitHub Release
-./Scripts/gh-release.sh --version 1.4.4 \
-  --asset "releases/HiFidelity-1.4.4-144.zip" \
-  --changelog "## What's New in 1.4.4
+./Scripts/gh-release.sh --version 1.0.10 \
+  --asset "releases/HiFidelity-1.0.10-1010.zip" \
+  --changelog "## What's New in 1.0.10
 
 ### Features
 - Added new feature X
@@ -306,8 +306,8 @@ cp -R "Desktop/HiFidelity-1.4.4/HiFidelity.app" "Exports/HiFidelity v1.4.4/"
 - UI refinements"
 
 # 7. Commit and push
-git add docs/appcast.xml docs/HiFidelity-1.4.4-144.zip HiFidelity.xcodeproj/project.pbxproj
-git commit -m "Release version 1.4.4"
+git add docs/appcast.xml docs/HiFidelity-1.0.10-1010.zip HiFidelity.xcodeproj/project.pbxproj
+git commit -m "Release version 1.0.10"
 git push
 ```
 
