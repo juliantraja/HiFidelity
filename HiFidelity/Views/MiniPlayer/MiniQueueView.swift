@@ -13,6 +13,7 @@ struct MiniQueueView: View {
     @ObservedObject var theme = AppTheme.shared
     
     @State private var hoveredIndex: Int? = nil
+    @State private var barHeights: [CGFloat] = [6, 8, 10, 12, 10, 8, 6]
     let onClose: () -> Void
     
     var body: some View {
@@ -123,7 +124,8 @@ struct MiniQueueView: View {
                         }
                 }
             }
-            .padding(.vertical, 8)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
         }
     }
     
@@ -139,15 +141,14 @@ struct MiniQueueView: View {
                         .cornerRadius(4)
                     
                     HStack(spacing: 2) {
-                        ForEach(0..<3) { index in
+                        ForEach(0..<7) { index in
                             RoundedRectangle(cornerRadius: 1)
                                 .fill(theme.currentTheme.primaryColor)
-                                .frame(width: 2, height: CGFloat.random(in: 6...14))
+                                .frame(width: 2, height: barHeights[index])
                                 .animation(
-                                    .easeInOut(duration: 0.5)
-                                    .repeatForever(autoreverses: true)
-                                    .delay(Double(index) * 0.15),
-                                    value: playback.isPlaying
+                                    .easeInOut(duration: 0.4)
+                                    .delay(Double(index) * 0.1),
+                                    value: barHeights[index]
                                 )
                         }
                     }
@@ -185,6 +186,33 @@ struct MiniQueueView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(theme.currentTheme.primaryColor.opacity(0.1))
+        .task(id: playback.isPlaying) {
+            guard playback.isPlaying else {
+                // Reset to default heights when not playing
+                barHeights = [6, 8, 10, 12, 10, 8, 6]
+                return
+            }
+            
+            // Continuously animate bar heights with dynamic random variations
+            while playback.isPlaying && !Task.isCancelled {
+                // Update each bar with random heights, but keep some smoothness
+                for index in 0..<7 {
+                    // Random target height between 3-18 for more dramatic range
+                    let targetHeight = CGFloat.random(in: 2...20)
+                    
+                    // Smoothly transition to the new target (prevents jarring jumps)
+                    let currentHeight = barHeights[index]
+                    let difference = targetHeight - currentHeight
+                    // Move 30-50% of the way to target each frame for smooth but dynamic motion
+                    let step = difference * CGFloat.random(in: 0.3...0.5)
+                    barHeights[index] = currentHeight + step
+                }
+                
+                // Vary update rate slightly for more organic feel (20-40 FPS)
+                let randomDelay = Int.random(in: 25...50)
+                try? await Task.sleep(for: .milliseconds(randomDelay))
+            }
+        }
     }
     
     private func queueItem(track: Track, index: Int) -> some View {

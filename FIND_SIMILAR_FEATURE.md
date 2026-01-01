@@ -3,6 +3,7 @@
 ## Overview
 
 This feature allows users to find tracks similar to the currently playing track based on:
+
 - **Musical Key** (Camelot System): Finds tracks with compatible keys for DJ-style mixing
 - **BPM (Beats Per Minute)**: Finds tracks with similar tempo (±5 BPM by default)
 
@@ -66,23 +67,27 @@ This feature allows users to find tracks similar to the currently playing track 
 ### Camelot Wheel Mapping
 
 The Camelot Wheel maps musical keys to numbers for easy DJ mixing:
+
 - **Minor keys (A)**: 1A-12A
 - **Major keys (B)**: 1B-12B
 
 Compatible keys for mixing:
+
 - Same key (perfect match)
 - Adjacent keys (±1 on the wheel)
 - Relative major/minor (same number, opposite mode)
 
 ### BPM Matching
 
-Default tolerance: ±5 BPM
+Default tolerance: ±0.05 BPM
+
 - Can be adjusted in `findTracksByBPM()` function
 - Searches both `song_features.tempo` and `tracks.bpm` fields
 
 ### Database Queries
 
 The similarity search functions use efficient database queries with indexes:
+
 - Index on `camelot_key` for fast key-based searches
 - Index on `tempo` for BPM-based searches
 - Combined queries for key + BPM matching
@@ -113,4 +118,3 @@ The similarity search functions use efficient database queries with indexes:
 - The feature requires tracks to have `song_features` records with key and BPM data
 - If a track doesn't have features, the search will fall back to metadata tags (`tracks.bpm`)
 - The Camelot key is automatically derived from key/mode if not explicitly set
-

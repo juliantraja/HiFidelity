@@ -199,12 +199,14 @@ struct MiniPlayerView: View {
     
     private func artworkSection(track: Track) -> some View {
         ZStack {
-            TrackArtworkView(track: track, size: 140, cornerRadius: 12)
+            TrackArtworkView(track: track, size: 140, cornerRadius: 0)
                 .id("mini-artwork-\(track.trackId ?? 0)-\(artworkRefreshToken)")
+                .clipShape(LeftRoundedRectangle(cornerRadius: 12))
             
             // Play/Pause overlay on hover
             if isHoveringArtwork {
                 Color.black.opacity(0.5)
+                    .clipShape(LeftRoundedRectangle(cornerRadius: 12))
                     .transition(.opacity)
                 
                 Button(action: {
@@ -665,6 +667,55 @@ struct VolumePopoverView: View {
         } else {
             return "speaker.wave.3.fill"
         }
+    }
+}
+
+// MARK: - Left Rounded Rectangle Shape
+
+/// A rectangle shape that only rounds the left corners (top-left and bottom-left)
+struct LeftRoundedRectangle: Shape {
+    var cornerRadius: CGFloat
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        
+        let radius = min(cornerRadius, rect.height / 2, rect.width / 2)
+        
+        // Start from top-left corner (rounded)
+        path.move(to: CGPoint(x: rect.minX + radius, y: rect.minY))
+        
+        // Top edge to top-right (sharp corner)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        
+        // Right edge to bottom-right (sharp corner)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        
+        // Bottom edge to bottom-left (rounded corner)
+        path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.maxY))
+        
+        // Bottom-left rounded corner
+        path.addArc(
+            center: CGPoint(x: rect.minX + radius, y: rect.maxY - radius),
+            radius: radius,
+            startAngle: .degrees(90),
+            endAngle: .degrees(180),
+            clockwise: false
+        )
+        
+        // Left edge
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+        
+        // Top-left rounded corner
+        path.addArc(
+            center: CGPoint(x: rect.minX + radius, y: rect.minY + radius),
+            radius: radius,
+            startAngle: .degrees(180),
+            endAngle: .degrees(270),
+            clockwise: false
+        )
+        
+        path.closeSubpath()
+        return path
     }
 }
 

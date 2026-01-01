@@ -2,7 +2,9 @@
 
 ## Overview
 
-This guide explains how to implement BPM and key analysis during library import. The implementation uses **Accelerate framework** (built into macOS) for signal processing.
+This guide explains how to implement BPM and key analysis during library
+import. The implementation uses **Accelerate framework** (built into macOS)
+for signal processing.
 
 ## Architecture
 
@@ -81,6 +83,7 @@ You can add a setting to enable/disable automatic analysis:
 ```
 
 Then modify `DBTrack.swift`:
+
 ```swift
 if enableAudioAnalysis {
     Task {
@@ -101,21 +104,25 @@ if enableAudioAnalysis {
 If the Accelerate-based implementation has issues, consider:
 
 ### Option 1: Use aubio (C Library)
+
 - More accurate BPM/key detection
 - Requires C bridge or Swift Package
 - Better for production use
 
 ### Option 2: Use Essentia (C++ Library)
+
 - Most accurate, industry-standard
 - Requires C++ bridge
 - Best for professional use
 
 ### Option 3: Use Python Bridge (librosa)
+
 - Easiest to implement
 - Requires Python runtime
 - Slower but very accurate
 
 ### Option 4: Use Metadata Tags Only
+
 - Fastest (no analysis needed)
 - Relies on tags being present
 - Current fallback approach
@@ -130,16 +137,19 @@ If the Accelerate-based implementation has issues, consider:
 ## Troubleshooting
 
 ### Analysis fails silently
+
 - Check logs for errors
 - Verify audio file is accessible
 - Check file format is supported
 
 ### Slow analysis
+
 - Reduce concurrent analysis count
 - Consider analyzing only on demand
 - Use metadata tags when available
 
 ### Inaccurate results
+
 - BPM/key detection is probabilistic
 - Results improve with longer tracks
 - Consider using more sophisticated algorithms
@@ -151,4 +161,3 @@ If the Accelerate-based implementation has issues, consider:
 3. **Add progress indicators** in UI
 4. **Add settings** to control analysis behavior
 5. **Optimize performance** for large libraries
-

@@ -81,6 +81,8 @@ This creates the zip file and updates the appcast.xml for in-app updates.
 
 This creates a release on GitHub with your zip file attached.
 
+**📝 Tip:** Before creating the release, check `CHANGELOG.md` for all the improvements you've tracked. Copy the relevant version section to use as your changelog.
+
 ```bash
 ./Scripts/gh-release.sh --version 1.0.10 \
   --asset "releases/HiFidelity-1.0.10-1010.zip" \
@@ -108,6 +110,7 @@ This creates a release on GitHub with your zip file attached.
 - Group changes by category (Features, Fixes, Improvements)
 - Use bullet points for readability
 - Include links to issues/PRs if relevant
+- **Use `CHANGELOG.md` as your source of truth** - update it as you make changes, then copy the relevant section when releasing
 
 ### Step 6: Commit and Push Changes
 
