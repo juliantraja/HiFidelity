@@ -19,8 +19,7 @@ releases/appcast-item-*.xml
 # Exported app bundles (local builds)
 Exports/
 
-# Sparkle zip files in docs (uploaded separately)
-docs/HiFidelity-*.zip
+# Note: docs/HiFidelity-*.zip files ARE committed for GitHub Pages hosting
 
 # Temporary files
 *.tmp
