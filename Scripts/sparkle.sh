@@ -1,16 +1,49 @@
 #!/usr/bin/env bash
 # Prepare Sparkle update: zip, sign, and update appcast.xml
-# Usage: ./sparkle.sh <path-to-app-bundle>
+# Usage: ./sparkle.sh <path-to-app-bundle> [--commit]
 # Example: ./sparkle.sh "Exports/HiFidelity v1.1.2/HiFidelity.app"
+# Example: ./sparkle.sh "Exports/HiFidelity v1.1.2/HiFidelity.app" --commit
 
 set -euo pipefail
 
-# Path to the .app bundle (required)
-APP_BUNDLE="${1:-}"
+# Parse arguments
+APP_BUNDLE=""
+AUTO_COMMIT=false
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --commit)
+      AUTO_COMMIT=true
+      shift
+      ;;
+    --help|-h)
+      echo "Usage: $0 <path-to-app-bundle> [--commit]"
+      echo ""
+      echo "Options:"
+      echo "  --commit    Automatically commit and push changes to git"
+      echo "  --help, -h  Show this help message"
+      echo ""
+      echo "Example:"
+      echo "  $0 \"Exports/HiFidelity v1.1.2/HiFidelity.app\""
+      echo "  $0 \"Exports/HiFidelity v1.1.2/HiFidelity.app\" --commit"
+      exit 0
+      ;;
+    *)
+      if [[ -z "$APP_BUNDLE" ]]; then
+        APP_BUNDLE="$1"
+      else
+        echo "Error: Unexpected argument: $1" >&2
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
 
 if [[ -z "$APP_BUNDLE" ]]; then
-  echo "Usage: $0 <path-to-app-bundle>"
-  echo "Example: $0 \"Exports/HiFidelity v1.1.2/HiFidelity.app\""
+  echo "Error: App bundle path is required" >&2
+  echo "Usage: $0 <path-to-app-bundle> [--commit]" >&2
+  echo "Run '$0 --help' for more information" >&2
   exit 1
 fi
 
@@ -155,15 +188,31 @@ echo "Files created/updated:"
 echo "  📦 docs/$ZIP_NAME"
 echo "  📄 $APPCAST_XML"
 echo ""
-echo "Next steps:"
-echo "1. Review the changes:"
-echo "   - docs/$ZIP_NAME"
-echo "   - docs/appcast.xml"
-echo ""
-echo "2. Commit and push to GitHub:"
-echo "   git add docs/$ZIP_NAME docs/appcast.xml"
-echo "   git commit -m \"Release version ${SHORT_VER} (build ${BUILD_VER})\""
-echo "   git push"
-echo ""
-echo "3. Verify the appcast is accessible:"
-echo "   https://juliantraja.github.io/HiFidelity/appcast.xml"
+
+# Auto-commit if requested
+if [[ "$AUTO_COMMIT" == true ]]; then
+  echo "📤 Committing and pushing to git..."
+  git add "docs/$ZIP_NAME" "$APPCAST_XML"
+  git commit -m "Release version ${SHORT_VER} (build ${BUILD_VER})"
+  git push
+  echo "   ✓ Changes committed and pushed"
+  echo ""
+  echo "🎉 Done! The update is now live."
+  echo "   Verify: https://juliantraja.github.io/HiFidelity/appcast.xml"
+else
+  echo "Next steps:"
+  echo "1. Review the changes:"
+  echo "   - docs/$ZIP_NAME"
+  echo "   - docs/appcast.xml"
+  echo ""
+  echo "2. Commit and push to GitHub (use Cursor UI or run):"
+  echo "   git add docs/$ZIP_NAME docs/appcast.xml"
+  echo "   git commit -m \"Release version ${SHORT_VER} (build ${BUILD_VER})\""
+  echo "   git push"
+  echo ""
+  echo "   Or run with --commit flag to auto-commit:"
+  echo "   $0 \"$APP_BUNDLE\" --commit"
+  echo ""
+  echo "3. Verify the appcast is accessible:"
+  echo "   https://juliantraja.github.io/HiFidelity/appcast.xml"
+fi
