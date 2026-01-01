@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 # Prepare Sparkle update: zip, sign, and update appcast.xml
+#
 # Usage: ./sparkle.sh <path-to-app-bundle> [--commit]
-# Example: ./sparkle.sh "Exports/HiFidelity v1.1.2/HiFidelity.app"
+#
+# Examples:
+#   ./sparkle.sh "Exports/HiFidelity v1.1.2/HiFidelity.app"
+#   ./sparkle.sh "Exports/HiFidelity v1.1.2/HiFidelity.app" --commit
+#
+# Quick reference:
+#   1. Build app in Xcode → Copy to Exports folder
+#   2. Run: ./Scripts/sparkle.sh "Exports/HiFidelity vX.X.X/HiFidelity.app"
+#   3. Commit & push the changes
+#
+# For more details, see: RELEASE.md or run: ./Scripts/sparkle.sh --help
 # Example: ./sparkle.sh "Exports/HiFidelity v1.1.2/HiFidelity.app" --commit
 
 set -euo pipefail
@@ -24,8 +35,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --help, -h  Show this help message"
       echo ""
       echo "Example:"
-      echo "  $0 \"Exports/HiFidelity v1.1.2/HiFidelity.app\""
-      echo "  $0 \"Exports/HiFidelity v1.1.2/HiFidelity.app\" --commit"
+      echo "  $0 \"Exports/HiFidelity v1.0.9/HiFidelity.app\""
+      echo "  $0 \"Exports/HiFidelity v1.0.9/HiFidelity.app\" --commit"
       exit 0
       ;;
     *)

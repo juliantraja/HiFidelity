@@ -145,9 +145,20 @@ brew install --cask rvarunrathod/tap/hifidelity
 
 ## ⚡ Development 
 
-- Make sure you’re running macOS 14 or later
+- Make sure you're running macOS 14 or later
 - Clone the repository
 - Open `HiFidelity.xcodeproj` in Xcode 15 or later
+
+### 📦 Releasing Updates
+
+For detailed release instructions, see [RELEASE.md](RELEASE.md)
+
+**Quick command:**
+```bash
+./Scripts/sparkle.sh "Exports/HiFidelity vX.X.X/HiFidelity.app"
+```
+
+Or run `./Scripts/sparkle.sh --help` for usage information.
 
 ---
 
