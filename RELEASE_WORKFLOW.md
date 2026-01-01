@@ -82,8 +82,8 @@ This creates the zip file and updates the appcast.xml for in-app updates.
 This creates a release on GitHub with your zip file attached.
 
 ```bash
-./Scripts/gh-release.sh --version 1.0.9 \
-  --asset "releases/HiFidelity-1.0.9-109.zip" \
+./Scripts/gh-release.sh --version 1.0.10 \
+  --asset "releases/HiFidelity-1.0.10-1010.zip" \
   --changelog "Your release notes here
 
 ## What's New
@@ -119,11 +119,11 @@ git status
 
 # Add only the necessary files
 git add docs/appcast.xml
-git add docs/HiFidelity-1.4.4-144.zip  # Only if you want to host it on GitHub Pages
+git add docs/HiFidelity-1.0.10-1010.zip  # Only if you want to host it on GitHub Pages
 git add HiFidelity.xcodeproj/project.pbxproj  # Version changes
 
 # Commit
-git commit -m "Release version 1.4.4"
+git commit -m "Release version 1.0.10"
 
 # Push
 git push
@@ -144,19 +144,19 @@ git push
 
 ```bash
 # 1. After exporting from Xcode, copy to Exports folder
-cp -R "path/to/HiFidelity.app" "Exports/HiFidelity v1.4.4/"
+cp -R "path/to/HiFidelity.app" "Exports/HiFidelity v1.0.10/"
 
 # 2. Create Sparkle update
-./Scripts/sparkle-update.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
+./Scripts/sparkle-update.sh "Exports/HiFidelity v1.0.10/HiFidelity.app"
 
 # 3. Create GitHub Release (with your custom changelog)
-./Scripts/gh-release.sh --version 1.4.4 \
-  --asset "releases/HiFidelity-1.4.4-144.zip" \
+./Scripts/gh-release.sh --version 1.0.10 \
+  --asset "releases/HiFidelity-1.0.10-1010.zip" \
   --changelog "Your release notes here"
 
 # 4. Commit and push
-git add docs/appcast.xml docs/HiFidelity-1.4.4-144.zip HiFidelity.xcodeproj/project.pbxproj
-git commit -m "Release version 1.4.4"
+git add docs/appcast.xml docs/HiFidelity-1.0.10-1010.zip HiFidelity.xcodeproj/project.pbxproj
+git commit -m "Release version 1.0.10"
 git push
 ```
 

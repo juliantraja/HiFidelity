@@ -79,8 +79,8 @@ enum About {
     static let appWebsite = "https://github.com/juliantraja/HiFidelity"
     static let appWiki = "https://github.com/juliantraja/HiFidelity/wiki"
     static let sponsor = "https://github.com/sponsors/rvarunrathod"  // Original creator's sponsor link
-    static let appVersion = "1.0.9"  // Fallback - should match Xcode MARKETING_VERSION
-    static let appBuild = "109"      // Fallback - should match Xcode CURRENT_PROJECT_VERSION
+    static let appVersion = "1.0.10"  // Fallback - should match Xcode MARKETING_VERSION
+    static let appBuild = "1010"      // Fallback - should match Xcode CURRENT_PROJECT_VERSION
 }
 
 

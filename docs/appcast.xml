@@ -7,16 +7,17 @@
     <language>en</language>
     
     <item>
-      <title>Version 1.0.9</title>
-      <pubDate>Thu, 01 Jan 2026 01:38:02 +0000</pubDate>
+      <title>Version 1.0.10</title>
+      <pubDate>Thu, 01 Jan 2026 12:06:32 +0000</pubDate>
       <enclosure
-        url="https://juliantraja.github.io/HiFidelity/HiFidelity-1.0.9-109.zip"
-        sparkle:edSignature="033JZbJjBdC9kLOFk8J9kc98GIEsbULIE0oO81PzxQC3Ts7Nf4QsZDwp2q6vyJbDVf1hct1WTSc8ZfzYnzeCCw=="
-        length="14618830"
+        url="https://juliantraja.github.io/HiFidelity/HiFidelity-1.0.10-1010.zip"
+        sparkle:edSignature="6JvYCty/q8UBNThNUxqQaP/HS4iQhW31P0ImuXAKSG/SaamfcG/gCkUs54ewb2hn+mhKgoBBUmPHof/o8wWaCw=="
+        length="14618860"
         type="application/octet-stream"
-        sparkle:version="109"
-        sparkle:shortVersionString="1.0.9" />
+        sparkle:version="1010"
+        sparkle:shortVersionString="1.0.10" />
     </item>
+
 
   </channel>
 </rss>
