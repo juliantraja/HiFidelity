@@ -25,9 +25,13 @@ on:
   push:
     tags:
       - 'v*'
+    branches-ignore:
+      - '*'  # Only run on tag pushes, not regular commits
 
 jobs:
   create-release:
+    # Only run if this is a tag push or manual dispatch
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-latest
     permissions:
       contents: write
@@ -113,7 +117,7 @@ ${CHANGELOG}
           
           # Create release
           gh release create "$TAG" \
-            --title "HiFidelity ${VERSION}" \
+            --title "$TAG" \
             --notes "$CHANGELOG" \
             $([ "$DRAFT" == "true" ] && echo "--draft" || true) \
             $([ "$PRERELEASE" == "true" ] && echo "--prerelease" || true) \
