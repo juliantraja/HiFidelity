@@ -25,13 +25,13 @@ on:
   push:
     tags:
       - 'v*'
-    branches-ignore:
-      - '*'  # Only run on tag pushes, not regular commits
 
 jobs:
   create-release:
-    # Only run if this is a tag push or manual dispatch
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    # Only run on tag pushes (v*) or manual dispatch - prevents "No jobs were run" emails
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     runs-on: macos-latest
     permissions:
       contents: write
