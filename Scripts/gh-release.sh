@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Create a GitHub Release with changelog and assets
 #
-# Usage: ./create-release.sh [options]
+# Usage: ./gh-release.sh [options]
 #
 # Examples:
-#   ./create-release.sh --version 1.0.10
-#   ./create-release.sh --version 1.0.10 --dmg "build/HiFidelity-1.0.10-Universal.dmg"
-#   ./create-release.sh --version 1.0.10 --auto-changelog
+#   ./gh-release.sh --version 1.0.10
+#   ./gh-release.sh --version 1.0.10 --dmg "build/HiFidelity-1.0.10-Universal.dmg"
+#   ./gh-release.sh --version 1.0.10 --changelog "Release notes"
 #
 # This script can:
 # - Create a GitHub release with a tag

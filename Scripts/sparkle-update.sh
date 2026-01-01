@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 # Prepare Sparkle update: zip, sign, and update appcast.xml
 #
-# Usage: ./sparkle.sh <path-to-app-bundle> [--commit]
+# Usage: ./sparkle-update.sh <path-to-app-bundle> [--commit]
 #
 # Examples:
-#   ./sparkle.sh "Exports/HiFidelity v1.1.2/HiFidelity.app"
-#   ./sparkle.sh "Exports/HiFidelity v1.1.2/HiFidelity.app" --commit
+#   ./sparkle-update.sh "Exports/HiFidelity v1.1.2/HiFidelity.app"
+#   ./sparkle-update.sh "Exports/HiFidelity v1.1.2/HiFidelity.app" --commit
 #
 # Quick reference:
 #   1. Build app in Xcode → Copy to Exports folder
-#   2. Run: ./Scripts/sparkle.sh "Exports/HiFidelity vX.X.X/HiFidelity.app"
+#   2. Run: ./Scripts/sparkle-update.sh "Exports/HiFidelity vX.X.X/HiFidelity.app"
 #   3. Commit & push the changes
 #
-# For more details, see: RELEASE.md or run: ./Scripts/sparkle.sh --help
-# Example: ./sparkle.sh "Exports/HiFidelity v1.1.2/HiFidelity.app" --commit
+# For more details, see: RELEASE_WORKFLOW.md or run: ./Scripts/sparkle-update.sh --help
 
 set -euo pipefail
 

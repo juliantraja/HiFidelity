@@ -155,10 +155,10 @@ For detailed release instructions, see [RELEASE.md](RELEASE.md)
 
 **Quick command:**
 ```bash
-./Scripts/sparkle.sh "Exports/HiFidelity vX.X.X/HiFidelity.app"
+./Scripts/sparkle-update.sh "Exports/HiFidelity vX.X.X/HiFidelity.app"
 ```
 
-Or run `./Scripts/sparkle.sh --help` for usage information.
+Or run `./Scripts/sparkle-update.sh --help` for usage information.
 
 ---
 

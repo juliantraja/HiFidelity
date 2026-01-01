@@ -61,7 +61,7 @@ Before you start, make sure you have:
 This creates the zip file and updates the appcast.xml for in-app updates.
 
 ```bash
-./Scripts/sparkle.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
+./Scripts/sparkle-update.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
 ```
 
 **What this does:**
@@ -82,7 +82,7 @@ This creates the zip file and updates the appcast.xml for in-app updates.
 This creates a release on GitHub with your zip file attached.
 
 ```bash
-./Scripts/create-release.sh --version 1.4.4 \
+./Scripts/gh-release.sh --version 1.4.4 \
   --asset "releases/HiFidelity-1.4.4-144.zip" \
   --changelog "Your release notes here
 
@@ -147,10 +147,10 @@ git push
 cp -R "path/to/HiFidelity.app" "Exports/HiFidelity v1.4.4/"
 
 # 2. Create Sparkle update
-./Scripts/sparkle.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
+./Scripts/sparkle-update.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
 
 # 3. Create GitHub Release (with your custom changelog)
-./Scripts/create-release.sh --version 1.4.4 \
+./Scripts/gh-release.sh --version 1.4.4 \
   --asset "releases/HiFidelity-1.4.4-144.zip" \
   --changelog "Your release notes here"
 
@@ -163,7 +163,7 @@ git push
 ### Just Sparkle Update (No GitHub Release)
 
 ```bash
-./Scripts/sparkle.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
+./Scripts/sparkle-update.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
 git add docs/appcast.xml docs/HiFidelity-1.4.4-144.zip
 git commit -m "Publish 1.4.4 Sparkle update"
 git push
@@ -172,7 +172,7 @@ git push
 ### Just GitHub Release (No Sparkle)
 
 ```bash
-./Scripts/create-release.sh --version 1.4.4 \
+./Scripts/gh-release.sh --version 1.4.4 \
   --asset "releases/HiFidelity-1.4.4-144.zip" \
   --changelog "Your release notes"
 ```
@@ -208,7 +208,7 @@ git push
 **Solution:**
 
 - Make sure the path is correct
-- Use absolute path: `./Scripts/sparkle.sh "/full/path/to/HiFidelity.app"`
+- Use absolute path: `./Scripts/sparkle-update.sh "/full/path/to/HiFidelity.app"`
 - Check that the app bundle exists: `ls -la "Exports/HiFidelity v1.4.4/HiFidelity.app"`
 
 ### "Release already exists" Error
@@ -286,10 +286,10 @@ mkdir -p "Exports/HiFidelity v1.4.4"
 cp -R "Desktop/HiFidelity-1.4.4/HiFidelity.app" "Exports/HiFidelity v1.4.4/"
 
 # 5. Create Sparkle update
-./Scripts/sparkle.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
+./Scripts/sparkle-update.sh "Exports/HiFidelity v1.4.4/HiFidelity.app"
 
 # 6. Create GitHub Release
-./Scripts/create-release.sh --version 1.4.4 \
+./Scripts/gh-release.sh --version 1.4.4 \
   --asset "releases/HiFidelity-1.4.4-144.zip" \
   --changelog "## What's New in 1.4.4
 
