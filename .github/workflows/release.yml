@@ -1,0 +1,147 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.10)'
+        required: true
+        type: string
+      auto_changelog:
+        description: 'Generate changelog from git commits'
+        required: false
+        default: true
+        type: boolean
+      draft:
+        description: 'Create as draft release'
+        required: false
+        default: false
+        type: boolean
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog generation
+      
+      - name: Set up GitHub CLI
+        run: |
+          if ! command -v gh &>/dev/null; then
+            brew install gh
+          fi
+      
+      - name: Determine version and tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Extract version from tag (e.g., v1.0.10 -> 1.0.10)
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+      
+      - name: Generate changelog
+        id: changelog
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.auto_changelog == 'true' || github.event_name == 'push' }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
+          
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found. Generating changelog from all commits..."
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --reverse | head -50)
+          else
+            echo "Generating changelog from $PREV_TAG to $TAG..."
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD" --reverse)
+          fi
+          
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="Release version ${VERSION}"
+          else
+            CHANGELOG="## What's Changed
+
+${CHANGELOG}
+
+**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
+          fi
+          
+          # Save to file for multi-line output
+          echo "$CHANGELOG" > changelog.txt
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            CHANGELOG="${{ steps.changelog.outputs.changelog }}"
+            DRAFT="${{ github.event.inputs.draft }}"
+            PRERELEASE="${{ github.event.inputs.prerelease }}"
+          else
+            # For tag push, read changelog from file
+            CHANGELOG=$(cat changelog.txt)
+            DRAFT="false"
+            PRERELEASE="false"
+          fi
+          
+          # Default changelog if empty
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="Release version ${VERSION}"
+          fi
+          
+          # Create release
+          gh release create "$TAG" \
+            --title "HiFidelity ${VERSION}" \
+            --notes "$CHANGELOG" \
+            $([ "$DRAFT" == "true" ] && echo "--draft" || true) \
+            $([ "$PRERELEASE" == "true" ] && echo "--prerelease" || true) \
+            --repo "${{ github.repository }}"
+          
+          echo "✅ Release created: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+      
+      - name: Upload assets (if any)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          
+          # Look for DMG files in common locations
+          if [ -d "build" ]; then
+            for dmg in build/*.dmg; do
+              if [ -f "$dmg" ]; then
+                echo "Uploading $(basename "$dmg")..."
+                gh release upload "$TAG" "$dmg" --repo "${{ github.repository }}" --clobber
+              fi
+            done
+          fi
+          
+          if [ -d "releases" ]; then
+            for dmg in releases/*.dmg; do
+              if [ -f "$dmg" ]; then
+                echo "Uploading $(basename "$dmg")..."
+                gh release upload "$TAG" "$dmg" --repo "${{ github.repository }}" --clobber
+              fi
+            done
+          fi
+

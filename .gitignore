@@ -15,3 +15,55 @@ HiFidelity 20*/
 # Sparkle release artifacts (keep locally, publish separately)
 releases/*.zip
 releases/appcast-item-*.xml
+
+# Exported app bundles (local builds)
+Exports/
+
+# Sparkle zip files in docs (uploaded separately)
+docs/HiFidelity-*.zip
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Environment and configuration files with secrets
+.env
+.env.local
+*.secrets
+config.local.*
+secrets.plist
+
+# Code signing certificates and keys (NEVER commit these!)
+*.p12
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.keychain
+*.keychain-db
+
+# Xcode user-specific settings (may contain signing info)
+*.xcuserstate
+*.xcuserdatad
+*.xcworkspace/xcuserdata/
+
+# Log files (may contain sensitive information)
+*.log
+*.xcactivitylog
+build/Logs/
+
+# Local development files
+local.*
+*.local
+.DS_Store
+
+# Backup files
+*.bak
+*~
+*.swp
+*.swo
+
+# IDE files
+.idea/
+.vscode/
+*.code-workspace
