@@ -8,25 +8,15 @@
     
     <item>
       <title>Version 1.0.9</title>
-      <pubDate>Thu, 01 Jan 2026 01:28:22 +0000</pubDate>
+      <pubDate>Thu, 01 Jan 2026 01:38:02 +0000</pubDate>
       <enclosure
         url="https://juliantraja.github.io/HiFidelity/HiFidelity-1.0.9-109.zip"
-        sparkle:edSignature="mGRg9moId00rbuoSMlDEOZew6T3zqBnCSyHJOa6DoQvu0e9MKBncrWpF/TddSFcozKZqVlXUxqY6dNGV7RxdBA=="
+        sparkle:edSignature="033JZbJjBdC9kLOFk8J9kc98GIEsbULIE0oO81PzxQC3Ts7Nf4QsZDwp2q6vyJbDVf1hct1WTSc8ZfzYnzeCCw=="
         length="14618830"
         type="application/octet-stream"
         sparkle:version="109"
         sparkle:shortVersionString="1.0.9" />
     </item>
-    <item>
-      <title>Version 1.1.2</title>
-      <pubDate>Wed, 31 Dec 2025 23:47:54 +0000</pubDate>
-      <enclosure
-        url="https://juliantraja.github.io/HiFidelity/HiFidelity-1.1.2-112.zip"
-        sparkle:edSignature="9OgsMInTPPy+c6wwhfyKMIdFJMmnJOChXeoGrtl0Sg2PHNPy5Wxg8drKQ11V7H9KZJu5+3ra3Xct6M8DtZ+yBw=="
-        length="14619359"
-        type="application/octet-stream"
-        sparkle:version="112"
-        sparkle:shortVersionString="1.1.2" />
-    </item>
+
   </channel>
 </rss>

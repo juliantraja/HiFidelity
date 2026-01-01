@@ -140,7 +140,7 @@ echo "📝 Updating appcast.xml..."
 # Create temporary appcast with new item at the top
 TEMP_APPCAST=$(mktemp)
 
-# Insert new item into appcast.xml (after </language> tag)
+# Replace all old items with the new one (keep only latest version)
 python3 <<PY
 import sys
 import re
@@ -154,17 +154,21 @@ temp_path = Path("$TEMP_APPCAST")
 appcast_content = appcast_path.read_text()
 snippet_content = snippet_path.read_text()
 
-# Find the position after </language> tag (where we insert new items)
-# Pattern to find: </language> followed by optional whitespace and newline
+# Find the position after </language> tag and before </channel> tag
+# We'll remove all existing <item> entries and insert the new one
 match = re.search(r'(</language>\s*\n)', appcast_content)
-if match:
+channel_end_match = re.search(r'(\s*</channel>)', appcast_content)
+
+if match and channel_end_match:
     insert_pos = match.end()
+    channel_end_pos = channel_end_match.start()
     
-    # Insert the new item after language tag
+    # Remove all existing items (everything between </language> and </channel>)
+    # and replace with just the new item
     new_appcast = (
         appcast_content[:insert_pos] +
         snippet_content.rstrip() + "\n" +
-        appcast_content[insert_pos:]
+        appcast_content[channel_end_pos:]
     )
     
     # Write to temp file
