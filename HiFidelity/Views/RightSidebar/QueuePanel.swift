@@ -100,24 +100,24 @@ struct QueuePanel: View {
 
                     // Layout view toggle buttons
                     HStack(spacing: 8) {
-                        // Normal view button
-                        Button(action: {
-                            isCompactView = false
-                        }) {
-                            Image(systemName: "rectangle.grid.1x2")
-                                .font(.system(size: 14))
-                                .foregroundColor(isCompactView ? .secondary.opacity(0.5) : theme.currentTheme.primaryColor)
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.plain)
-
-                        // Compact view button
+                        // Compact view button (left)
                         Button(action: {
                             isCompactView = true
                         }) {
                             Image(systemName: "list.bullet")
                                 .font(.system(size: 14))
                                 .foregroundColor(isCompactView ? theme.currentTheme.primaryColor : .secondary.opacity(0.5))
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.plain)
+
+                        // Normal view button (right)
+                        Button(action: {
+                            isCompactView = false
+                        }) {
+                            Image(systemName: "rectangle.grid.1x2")
+                                .font(.system(size: 14))
+                                .foregroundColor(isCompactView ? .secondary.opacity(0.5) : theme.currentTheme.primaryColor)
                                 .frame(width: 24, height: 24)
                         }
                         .buttonStyle(.plain)
@@ -129,6 +129,7 @@ struct QueuePanel: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onDrop(of: [.text], delegate: QueueExternalDropDelegate(playbackController: playback))
     }
     
     private func currentTrackCard(track: Track) -> some View {
@@ -177,6 +178,13 @@ struct QueuePanel: View {
                 .id("\(track.id)-\(track.title)-\(track.artist)")  // Force recreation on track change
 
                 Spacer()
+            }
+            .onDrag {
+                // Enable dragging of now playing track to playlists (only track info, not EQ)
+                if let trackId = track.trackId {
+                    return NSItemProvider(object: "track:\(trackId)" as NSString)
+                }
+                return NSItemProvider()
             }
 
             // Audio controls row (filters and pitch)
@@ -380,8 +388,14 @@ struct QueuePanel: View {
 
         .onDrag({
             self.draggedIndex = index
-            let itemProvider = NSItemProvider(object: String(index) as NSString)
-            return itemProvider
+            // Provide both queue index (for internal queue reordering) and track ID (for playlist drops)
+            if let trackId = track.trackId {
+                let itemProvider = NSItemProvider(object: "track:\(trackId)" as NSString)
+                // Also register queue index for internal drops
+                itemProvider.registerObject(String(index) as NSString, visibility: .all)
+                return itemProvider
+            }
+            return NSItemProvider(object: String(index) as NSString)
         }, preview: {
             // Lightweight drag preview - just the track title
             Text(track.title)

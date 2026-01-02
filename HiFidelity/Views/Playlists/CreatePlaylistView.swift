@@ -8,11 +8,13 @@
 import SwiftUI
 import AppKit
 
-/// Modern playlist creation view
+/// Modern playlist creation and editing view
 struct CreatePlaylistView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var databaseManager: DatabaseManager
     @ObservedObject var theme = AppTheme.shared
+    
+    let playlistToEdit: Playlist?
     
     @State private var playlistName = ""
     @State private var description = ""
@@ -26,6 +28,10 @@ struct CreatePlaylistView: View {
     @State private var errorMessage = ""
     @State private var showImportSuccess = false
     @State private var importMessage = ""
+    
+    init(playlistToEdit: Playlist? = nil) {
+        self.playlistToEdit = playlistToEdit
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -56,6 +62,11 @@ struct CreatePlaylistView: View {
         }
         .frame(width: 600, height: 700)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            if let playlist = playlistToEdit {
+                loadPlaylistData(playlist)
+            }
+        }
         .alert("Error", isPresented: $showError) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -70,19 +81,39 @@ struct CreatePlaylistView: View {
         }
     }
     
+    private func loadPlaylistData(_ playlist: Playlist) {
+        playlistName = playlist.name
+        description = playlist.description ?? ""
+        isFavorite = playlist.isFavorite
+        
+        if let imageData = playlist.customArtworkData, let image = NSImage(data: imageData) {
+            selectedImage = image
+            compressedImageData = imageData
+        }
+        
+        if let colorSchemeString = playlist.colorScheme,
+           let scheme = PlaylistColorScheme(rawValue: colorSchemeString) {
+            selectedColorScheme = scheme
+        } else {
+            selectedColorScheme = .auto
+        }
+    }
+    
     // MARK: - Header
     
     private var header: some View {
         HStack {
-            Text("Create Playlist")
+            Text(playlistToEdit == nil ? "Create Playlist" : "Edit Playlist")
                 .font(.system(size: 20, weight: .bold))
             
             Spacer()
             
             HStack(spacing: 8) {
-                Button {
-                    importFromM3U()
-                } label: {
+                // Only show import buttons when creating, not editing
+                if playlistToEdit == nil {
+                    Button {
+                        importFromM3U()
+                    } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "square.and.arrow.down")
                             .font(.system(size: 14))
@@ -119,6 +150,7 @@ struct CreatePlaylistView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Import playlists from folders (up to 25 folders)")
+                }
             }
             
             Button {
@@ -357,7 +389,7 @@ struct CreatePlaylistView: View {
                             .scaleEffect(0.7)
                             .tint(.white)
                     }
-                    Text(isCreating ? "Creating..." : "Create Playlist")
+                    Text(isCreating ? (playlistToEdit == nil ? "Creating..." : "Saving...") : (playlistToEdit == nil ? "Create Playlist" : "Save Changes"))
                         .font(.system(size: 14, weight: .semibold))
                 }
                 .foregroundColor(.white)
@@ -400,26 +432,43 @@ struct CreatePlaylistView: View {
         defer { isCreating = false }
         
         do {
-            var playlist = Playlist(
-                name: playlistName.trimmingCharacters(in: .whitespacesAndNewlines),
-                description: description.isEmpty ? nil : description.trimmingCharacters(in: .whitespacesAndNewlines),
-                isSmart: false
-            )
-            
-            playlist.customArtworkData = compressedImageData
-            playlist.colorScheme = selectedColorScheme == .auto ? nil : selectedColorScheme.rawValue
-            playlist.isFavorite = isFavorite
-            
-            let createdPlaylist = try await databaseManager.createPlaylist(playlist)
-            
-            // Notify success with the created playlist
-            NotificationCenter.default.post(name: .playlistCreated, object: createdPlaylist)
-            
-            dismiss()
+            if let existingPlaylist = playlistToEdit {
+                // Update existing playlist
+                var updatedPlaylist = existingPlaylist
+                updatedPlaylist.name = playlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+                updatedPlaylist.description = description.isEmpty ? nil : description.trimmingCharacters(in: .whitespacesAndNewlines)
+                updatedPlaylist.customArtworkData = compressedImageData
+                updatedPlaylist.colorScheme = selectedColorScheme == .auto ? nil : selectedColorScheme.rawValue
+                updatedPlaylist.isFavorite = isFavorite
+                updatedPlaylist.modifiedDate = Date()
+                
+                try await databaseManager.updatePlaylist(updatedPlaylist)
+                // Note: updatePlaylist already posts .playlistsDidChange notification
+                
+                dismiss()
+            } else {
+                // Create new playlist
+                var playlist = Playlist(
+                    name: playlistName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    description: description.isEmpty ? nil : description.trimmingCharacters(in: .whitespacesAndNewlines),
+                    isSmart: false
+                )
+                
+                playlist.customArtworkData = compressedImageData
+                playlist.colorScheme = selectedColorScheme == .auto ? nil : selectedColorScheme.rawValue
+                playlist.isFavorite = isFavorite
+                
+                let createdPlaylist = try await databaseManager.createPlaylist(playlist)
+                
+                // Notify success with the created playlist
+                NotificationCenter.default.post(name: .playlistCreated, object: createdPlaylist)
+                
+                dismiss()
+            }
         } catch {
-            errorMessage = "Failed to create playlist: \(error.localizedDescription)"
+            errorMessage = playlistToEdit == nil ? "Failed to create playlist: \(error.localizedDescription)" : "Failed to update playlist: \(error.localizedDescription)"
             showError = true
-            Logger.error("Failed to create playlist: \(error)")
+            Logger.error("Failed to \(playlistToEdit == nil ? "create" : "update") playlist: \(error)")
         }
     }
     

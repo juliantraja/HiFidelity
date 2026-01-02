@@ -483,12 +483,21 @@ extension DatabaseManager {
     
     // MARK: - Playlist Operations
     
-    /// Get all playlists, sorted by name
+    /// Get all playlists, sorted by custom order (sort_order)
     func getAllPlaylists() async throws -> [Playlist] {
         return try await dbQueue.read { db in
             try Playlist
-                .order(Playlist.Columns.name)
+                .order(Playlist.Columns.sortOrder.asc, Playlist.Columns.id.asc)
                 .fetchAll(db)
+        }
+    }
+    
+    /// Get a playlist by ID
+    /// - Parameter playlistId: Playlist ID
+    /// - Returns: Playlist object
+    func getPlaylist(playlistId: Int64) async throws -> Playlist? {
+        return try await dbQueue.read { db in
+            try Playlist.fetchOne(db, key: playlistId)
         }
     }
     

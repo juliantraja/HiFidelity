@@ -81,7 +81,33 @@ extension PlaybackController {
             playbackHistory.append(current)
         }
         
-        currentTrack = queue[index]
+        // Get track from queue
+        let trackFromQueue = queue[index]
+        
+        // Refresh track from database to ensure we have latest data (e.g., favorite status)
+        Task {
+            if let trackId = trackFromQueue.trackId,
+               let refreshedTrack = try? await DatabaseCache.shared.getTrack(by: trackId, forceRefresh: true) {
+                await MainActor.run {
+                    currentTrack = refreshedTrack
+                    currentTime = 0
+                    duration = 0 // Will be set when track loads
+                    
+                    // Reset gapless state
+                    isNextTrackPreloaded = false
+                    nextTrack = nil
+                    
+                    play()
+                    
+                    currentStreamInfo = audioEngine.getStreamInfo()
+                    
+                    // Pre-load next track for gapless playback
+                    prepareNextTrackForGapless()
+                }
+            } else {
+                // Fallback to queue track if refresh fails
+                await MainActor.run {
+                    currentTrack = trackFromQueue
         currentTime = 0
         duration = 0 // Will be set when track loads
         
@@ -95,6 +121,9 @@ extension PlaybackController {
         
         // Pre-load next track for gapless playback
         prepareNextTrackForGapless()
+                }
+            }
+        }
     }
     
     // MARK: - Queue Operations

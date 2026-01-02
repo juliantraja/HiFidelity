@@ -13,6 +13,7 @@ struct PlaylistItem: Identifiable, Equatable, Hashable {
     let name: String
     let isPinned: Bool
     let type: PlaylistType
+    var smartPlaylistTrackCount: Int? // Optional track count for smart playlists
     
     enum PlaylistType: Equatable, Hashable {
         case user(Playlist)
@@ -44,7 +45,7 @@ struct PlaylistItem: Identifiable, Equatable, Hashable {
         case .user(let playlist):
             return playlist.trackCount
         case .smart:
-            return 0 // Will be loaded dynamically
+            return smartPlaylistTrackCount ?? 0
         }
     }
     
@@ -124,6 +125,7 @@ enum SmartPlaylistType: String, CaseIterable {
 
 /// Playlist sort options
 enum PlaylistSortOption: String, CaseIterable, Hashable {
+    case customOrder = "Custom Order"
     case name = "Name"
     case dateCreated = "Date Created"
     case dateModified = "Date Modified"
@@ -135,6 +137,8 @@ enum PlaylistSortOption: String, CaseIterable, Hashable {
     
     var ascendingIcon: String {
         switch self {
+        case .customOrder:
+            return "arrow.up.arrow.down"
         case .name:
             return "arrow.up"
         case .dateCreated, .dateModified:
@@ -146,6 +150,8 @@ enum PlaylistSortOption: String, CaseIterable, Hashable {
     
     var descendingIcon: String {
         switch self {
+        case .customOrder:
+            return "arrow.up.arrow.down"
         case .name:
             return "arrow.down"
         case .dateCreated, .dateModified:
@@ -155,3 +161,5 @@ enum PlaylistSortOption: String, CaseIterable, Hashable {
         }
     }
 }
+
+// MARK: - Drag & Drop Types

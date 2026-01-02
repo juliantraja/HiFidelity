@@ -16,29 +16,36 @@ struct MainContentRouter: View {
     
     var body: some View {
         ZStack {
-            // Layer 1 — Home
-           HomeView(selectedEntity: $selectedEntity)
-               .zIndex(0)
+            // Layer 1 — Home (only show when no entity is selected and not transitioning)
+           if selectedEntity == nil {
+               HomeView(selectedEntity: $selectedEntity)
+                   .zIndex(0)
+           }
 
            // Layer 2 — Entity Detail (album/artist/genre)
            if let entity = selectedEntity {
                if isSearchActive {
-                   EntityDetailWithNavigation(entity: entity) {
+                   EntityDetailWithNavigation(entity: Binding(
+                       get: { selectedEntity! },
+                       set: { selectedEntity = $0 }
+                   )) {
                        selectedEntity = nil
                    }
+                   .id(entity.uniqueId)
                    .transition(
                         .opacity
-                        .animation(.easeInOut(duration: 0.4))
+                        .animation(.easeInOut(duration: 0.15))
                    )
                    .zIndex(3)
                } else {
-                   EntityDetailWithNavigation(entity: entity) {
+                   EntityDetailWithNavigation(entity: Binding(
+                       get: { selectedEntity! },
+                       set: { selectedEntity = $0 }
+                   )) {
                        selectedEntity = nil
                    }
-                   .transition(
-                        .opacity
-                        .animation(.easeInOut(duration: 0.4))
-                   )
+                   .id(entity.uniqueId)
+                   .transition(.identity)
                    .zIndex(1)
                }
                
@@ -72,7 +79,7 @@ struct MainContentRouter: View {
 
 /// Wrapper for EntityDetailView with back navigation
 private struct EntityDetailWithNavigation: View {
-    let entity: EntityType
+    @Binding var entity: EntityType
     let onBack: () -> Void
     
     @ObservedObject var theme = AppTheme.shared
@@ -84,8 +91,9 @@ private struct EntityDetailWithNavigation: View {
             
             Divider()
             
-            // Entity detail
+            // Entity detail - force recreation when entity changes
             EntityDetailView(entity: entity)
+                .id(entity.uniqueId)
         }
         .background(.ultraThinMaterial)
             

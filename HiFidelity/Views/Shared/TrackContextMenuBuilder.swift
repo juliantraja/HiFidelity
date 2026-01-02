@@ -210,9 +210,23 @@ class TrackContextMenuBuilder {
         var updatedTrack = track
         updatedTrack.isFavorite.toggle()
         
+        // Capture values before Task
+        let finalTrack = updatedTrack
+        let trackId = updatedTrack.trackId
+        
         Task {
             do {
-                try await DatabaseManager.shared.updateTrackFavoriteStatus(updatedTrack)
+                try await DatabaseManager.shared.updateTrackFavoriteStatus(finalTrack)
+                // Post notification to refresh UI
+                await MainActor.run {
+                    if let trackId = trackId {
+                        NotificationCenter.default.post(
+                            name: .libraryDataDidChange,
+                            object: nil,
+                            userInfo: ["trackId": trackId]
+                        )
+                    }
+                }
             } catch {
                 Logger.error("Failed to update favorite: \(error)")
             }

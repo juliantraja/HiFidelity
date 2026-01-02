@@ -11,21 +11,35 @@ extension PlaybackController {
     // MARK: - Favorites
     
     func toggleFavorite() {
-        guard var track = currentTrack else { return }
+        guard let track = currentTrack else { return }
         
-        guard track.trackId != nil else {
+        guard let trackId = track.trackId else {
             Logger.error("Cannot update favorite - track has no database ID")
             return
         }
         
         // Toggle the favorite status
-        track.isFavorite.toggle()
-        currentTrack = track
+        var updatedTrack = track
+        updatedTrack.isFavorite.toggle()
+        currentTrack = updatedTrack
+        
+        // Capture values before Task
+        let finalTrack = updatedTrack
+        let finalTrackId = trackId
+        
         // Update in database
         Task {
             do {
-                try await DatabaseManager.shared.updateTrackFavoriteStatus(track)
-                Logger.info("Updated favorite status for: \(track.title), isFavorite: \(track.isFavorite)")
+                try await DatabaseManager.shared.updateTrackFavoriteStatus(finalTrack)
+                Logger.info("Updated favorite status for: \(finalTrack.title), isFavorite: \(finalTrack.isFavorite)")
+                // Post notification to refresh UI
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: .libraryDataDidChange,
+                        object: nil,
+                        userInfo: ["trackId": finalTrackId]
+                    )
+                }
             } catch {
                 Logger.error("Failed to update favorite: \(error)")
             }

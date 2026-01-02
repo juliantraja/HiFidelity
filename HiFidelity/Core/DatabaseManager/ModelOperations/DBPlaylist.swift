@@ -71,16 +71,132 @@ extension DatabaseManager {
     // MARK: - Update Playlist
     
     func updatePlaylist(_ playlist: Playlist) async throws {
-        try await dbQueue.write { db in
-            let mutable = playlist
-            try mutable.update(db)
-        }
+        // Log description value for debugging
+        let descriptionPreview = playlist.description?.prefix(200) ?? "nil"
+        let descriptionLength = playlist.description?.count ?? 0
+        let hasSpaces = playlist.description?.contains(" ") ?? false
         
-        Logger.info("Updated playlist: \(playlist.name)")
+        Logger.debug("Updating playlist '\(playlist.name)' (ID: \(playlist.id ?? -1))")
+        Logger.debug("Description length: \(descriptionLength), contains spaces: \(hasSpaces)")
+        
+        do {
+            try await dbQueue.write { db in
+                // Validate description before update
+                if let desc = playlist.description {
+                    // Check for null bytes which could cause issues
+                    if desc.contains("\0") {
+                        Logger.warning("Playlist description contains null bytes, removing them: \(playlist.name)")
+                    }
+                    // Ensure valid UTF-8 encoding
+                    guard desc.data(using: .utf8) != nil else {
+                        Logger.error("Playlist description contains invalid UTF-8 characters: \(playlist.name)")
+                        throw DatabaseError.updateFailed
+                    }
+                }
+                
+                try playlist.update(db)
+            }
+            
+            Logger.info("Successfully updated playlist: \(playlist.name)")
+        } catch {
+            let errorMessage = error.localizedDescription
+            let isCorruptionError = errorMessage.contains("error 11") || errorMessage.contains("database disk image is malformed")
+            
+            Logger.error("Failed to update playlist '\(playlist.name)': \(errorMessage)")
+            Logger.error("Description preview: \(descriptionPreview)")
+            Logger.error("Description length: \(descriptionLength), contains spaces: \(hasSpaces)")
+            
+            // If this is a corruption error (SQLite error 11), try to rebuild FTS table and retry
+            if isCorruptionError {
+                Logger.warning("Detected database corruption error (SQLite error 11). Attempting to repair playlists_fts table...")
+                
+                do {
+                    // Rebuild the playlists_fts table to fix corruption
+                    try await rebuildPlaylistsFTS()
+                    Logger.info("Successfully rebuilt playlists_fts table, retrying playlist update...")
+                    
+                    // Retry the update after rebuilding FTS table
+                    try await dbQueue.write { db in
+                        try playlist.update(db)
+                    }
+                    
+                    Logger.info("Successfully updated playlist after FTS rebuild: \(playlist.name)")
+                } catch let repairError {
+                    Logger.error("Failed to repair FTS table or retry update: \(repairError.localizedDescription)")
+                    throw error // Throw original error
+                }
+            } else {
+                // Not a corruption error, throw as normal
+                throw error
+            }
+        }
         
         // Post notification (cache will auto-invalidate via notification observer)
         await MainActor.run {
             NotificationCenter.default.post(name: .playlistsDidChange, object: nil)
+        }
+    }
+    
+    /// Rebuild the playlists_fts table to fix corruption
+    private func rebuildPlaylistsFTS() async throws {
+        try await dbQueue.write { db in
+            Logger.info("Rebuilding playlists_fts table to fix corruption...")
+            
+            // Try to rebuild first (faster, non-destructive)
+            do {
+                try db.execute(sql: "INSERT INTO playlists_fts(playlists_fts) VALUES('rebuild')")
+                Logger.info("Successfully rebuilt playlists_fts table using rebuild command")
+                return
+            } catch {
+                Logger.warning("Rebuild command failed, dropping and recreating playlists_fts table: \(error.localizedDescription)")
+                
+                // If rebuild fails, drop and recreate the table
+                try db.execute(sql: "DROP TABLE IF EXISTS playlists_fts")
+                
+                // Drop the triggers
+                try db.execute(sql: "DROP TRIGGER IF EXISTS playlists_fts_insert")
+                try db.execute(sql: "DROP TRIGGER IF EXISTS playlists_fts_delete")
+                try db.execute(sql: "DROP TRIGGER IF EXISTS playlists_fts_update")
+                
+                // Recreate the FTS table
+                try db.execute(sql: """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS playlists_fts USING fts5(
+                        id UNINDEXED,
+                        name,
+                        description,
+                        content='playlists',
+                        content_rowid='id',
+                        tokenize='unicode61 remove_diacritics 2'
+                    )
+                """)
+                
+                // Recreate the triggers
+                try db.execute(sql: """
+                    CREATE TRIGGER IF NOT EXISTS playlists_fts_insert AFTER INSERT ON playlists BEGIN
+                        INSERT INTO playlists_fts(rowid, id, name, description)
+                        VALUES (new.id, new.id, new.name, COALESCE(new.description, ''));
+                    END;
+                """)
+                
+                try db.execute(sql: """
+                    CREATE TRIGGER IF NOT EXISTS playlists_fts_delete AFTER DELETE ON playlists BEGIN
+                        DELETE FROM playlists_fts WHERE rowid = old.id;
+                    END;
+                """)
+                
+                try db.execute(sql: """
+                    CREATE TRIGGER IF NOT EXISTS playlists_fts_update AFTER UPDATE ON playlists BEGIN
+                        DELETE FROM playlists_fts WHERE rowid = old.id;
+                        INSERT INTO playlists_fts(rowid, id, name, description)
+                        VALUES (new.id, new.id, new.name, COALESCE(new.description, ''));
+                    END;
+                """)
+                
+                // Rebuild from existing data
+                try db.execute(sql: "INSERT INTO playlists_fts(playlists_fts) VALUES('rebuild')")
+                
+                Logger.info("Successfully recreated and rebuilt playlists_fts table")
+            }
         }
     }
 
@@ -89,6 +205,13 @@ extension DatabaseManager {
     func createPlaylist(_ playlist: Playlist) async throws -> Playlist {
         let result = try await dbQueue.write { db in
             var mutable = playlist
+            
+            // Place new playlist at the end of current custom order
+            let maxSortOrder = try Playlist
+                .select(max(Playlist.Columns.sortOrder))
+                .fetchOne(db) ?? -1
+            mutable.sortOrder = maxSortOrder + 1
+            
             try mutable.insert(db)
             return mutable
         }
@@ -131,7 +254,7 @@ extension DatabaseManager {
     }
     
     // MARK: - Add Track to Playlist
-    
+
     func addTrackToPlaylist(trackId: Int64, playlistId: Int64) async throws {
         try await dbQueue.write { db in
             // Check if track already exists in playlist
@@ -139,18 +262,18 @@ extension DatabaseManager {
                 .filter(PlaylistTrack.Columns.playlistId == playlistId)
                 .filter(PlaylistTrack.Columns.trackId == trackId)
                 .fetchCount(db)
-            
+
             if existingCount > 0 {
                 Logger.info("Track \(trackId) already exists in playlist \(playlistId), skipping")
                 throw DatabaseError.duplicateTrackInPlaylist
             }
-            
+
             // Get current max position
             let maxPosition = try PlaylistTrack
                 .filter(PlaylistTrack.Columns.playlistId == playlistId)
                 .select(max(PlaylistTrack.Columns.position))
                 .fetchOne(db) ?? -1
-            
+
             // Create playlist track entry
             var playlistTrack = PlaylistTrack(
                 playlistId: playlistId,
@@ -158,9 +281,9 @@ extension DatabaseManager {
                 position: maxPosition + 1,
                 dateAdded: Date()
             )
-            
+
             try playlistTrack.insert(db)
-            
+
             // Update playlist track count and duration
             if var playlist = try Playlist.fetchOne(db, id: playlistId),
                let track = try Track
@@ -172,17 +295,61 @@ extension DatabaseManager {
                 try playlist.update(db)
             }
         }
-        
+
         Logger.info("Added track \(trackId) to playlist \(playlistId)")
-        
+
         // Post notification (cache will auto-invalidate via notification observer)
         await MainActor.run {
             NotificationCenter.default.post(name: .playlistsDidChange, object: nil)
         }
     }
-    
+
+    // MARK: - Reorder Playlists
+
+    func reorderPlaylists(sourceId: Int64, targetId: Int64) async throws {
+        try await dbQueue.write { db in
+            // Get all playlists ordered by sortOrder
+            var playlists = try Playlist
+                .order(Playlist.Columns.sortOrder)
+                .fetchAll(db)
+
+            // Find source and target
+            guard let sourceIndex = playlists.firstIndex(where: { $0.id == sourceId }),
+                  let targetIndex = playlists.firstIndex(where: { $0.id == targetId }) else {
+                return
+            }
+
+            // Remove source
+            let source = playlists.remove(at: sourceIndex)
+
+            // Insert relative to target:
+            // - If moving downwards, insert after target to allow dropping to bottom
+            // - If moving upwards, insert before target
+            let insertionIndex: Int
+            if sourceIndex < targetIndex {
+                insertionIndex = min(targetIndex, playlists.count)
+            } else {
+                insertionIndex = targetIndex
+            }
+            playlists.insert(source, at: insertionIndex)
+
+            // Update all sortOrders
+            for (index, var playlist) in playlists.enumerated() {
+                playlist.sortOrder = index
+                try playlist.update(db)
+            }
+        }
+
+        Logger.info("Reordered playlist \(sourceId) to position of \(targetId)")
+
+        // Post notification
+        await MainActor.run {
+            NotificationCenter.default.post(name: .playlistsDidChange, object: nil)
+        }
+    }
+
     // MARK: - Remove Track from Playlist
-    
+
     func removeTrackFromPlaylist(trackId: Int64, playlistId: Int64) async throws {
         try await dbQueue.write { db in
             // Delete playlist track entry
@@ -546,4 +713,3 @@ extension DatabaseManager {
         Logger.info("M3U Export: Successfully exported '\(playlist.name)' to \(saveURL.lastPathComponent)")
     }
 }
-

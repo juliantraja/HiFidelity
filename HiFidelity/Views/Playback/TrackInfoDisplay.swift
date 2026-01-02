@@ -25,6 +25,9 @@ struct TrackInfoDisplay: View {
             if let track = currentTrack {
                 HStack(spacing: 4) {
                     trackDetails(for: track)
+                    
+                    Spacer()
+                    
                     favoriteButton(for: track)
                     findSimilarButton(for: track)
                 }
@@ -171,11 +174,11 @@ struct TrackInfoDisplay: View {
                 Image(systemName: "waveform.path")
                     .font(.system(size: 16, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundColor(isActive ? .white : (isHovered ? theme.currentTheme.primaryColor : .secondary))
+                    .foregroundColor(isActive ? theme.currentTheme.primaryColor : (isHovered ? theme.currentTheme.primaryColor : .secondary))
                     .frame(width: 32, height: 32)
                     .background(
                         Circle()
-                            .fill(isActive ? theme.currentTheme.primaryColor : (isHovered ? Color.primary.opacity(0.06) : Color.clear))
+                            .fill(isHovered && !isActive ? Color.primary.opacity(0.06) : Color.clear)
                     )
                     .scaleEffect(isHovered ? 1.1 : 1.0)
                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
@@ -202,9 +205,16 @@ struct TrackInfoDisplay: View {
         @ObservedObject private var playback = PlaybackController.shared
         @ObservedObject var theme = AppTheme.shared
         @State private var isHovered = false
+        @State private var longPressTask: Task<Void, Never>?
+        @State private var showPlaylistMenu = false
         
         var body: some View {
-            Button(action: { playback.toggleFavorite() }) {
+            Button(action: {
+                // Only toggle if long press didn't trigger
+                if !showPlaylistMenu {
+                    playback.toggleFavorite()
+                }
+            }) {
                 Image(systemName: (playback.currentTrack?.isFavorite ?? false) ? "heart.fill" : "heart")
                     .font(.system(size: 16, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
@@ -223,7 +233,118 @@ struct TrackInfoDisplay: View {
             .onHover { hovering in
                 isHovered = hovering
             }
-            .help((playback.currentTrack?.isFavorite ?? false) ? "Remove from Favorites" : "Add to Favorites")
+            .help((playback.currentTrack?.isFavorite ?? false) ? "Remove from Favorites" : "Add to Favorites (Long press to add to playlist)")
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        // Start long press timer
+                        longPressTask?.cancel()
+                        longPressTask = Task {
+                            try? await Task.sleep(for: .seconds(1))
+                            if !Task.isCancelled {
+                                await MainActor.run {
+                                    showPlaylistMenu = true
+                                }
+                            }
+                        }
+                    }
+                    .onEnded { _ in
+                        // Cancel long press if button was released
+                        longPressTask?.cancel()
+                        longPressTask = nil
+                    }
+            )
+            .popover(isPresented: $showPlaylistMenu, arrowEdge: .bottom) {
+                PlaylistSelectionMenu(track: playback.currentTrack) {
+                    showPlaylistMenu = false
+                }
+            }
+        }
+    }
+    
+    private struct PlaylistSelectionMenu: View {
+        let track: Track?
+        let onDismiss: () -> Void
+        
+        @State private var userPlaylists: [Playlist] = []
+        @EnvironmentObject var databaseManager: DatabaseManager
+        @ObservedObject var theme = AppTheme.shared
+        
+        var body: some View {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Add to Playlist")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                
+                Divider()
+                
+                if userPlaylists.isEmpty {
+                    Text("No playlists available")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(userPlaylists) { playlist in
+                                Button(action: {
+                                    addTrackToPlaylist(playlist)
+                                }) {
+                                    HStack {
+                                        Image(systemName: "music.note.list")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                        Text(playlist.name)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.primary)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                }
+                                .buttonStyle(.plain)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Color.clear)
+                                )
+                                .contentShape(Rectangle())
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .frame(maxHeight: 200)
+                }
+            }
+            .frame(width: 200)
+            .task {
+                await loadUserPlaylists()
+            }
+        }
+        
+        private func loadUserPlaylists() async {
+            do {
+                userPlaylists = try await DatabaseCache.shared.getUserPlaylists()
+            } catch {
+                Logger.error("Failed to load user playlists: \(error)")
+            }
+        }
+        
+        private func addTrackToPlaylist(_ playlist: Playlist) {
+            guard let track = track, let trackId = track.trackId, let playlistId = playlist.id else { return }
+            
+            Task {
+                do {
+                    try await databaseManager.addTrackToPlaylist(trackId: trackId, playlistId: playlistId)
+                    await MainActor.run {
+                        onDismiss()
+                    }
+                } catch {
+                    Logger.error("Failed to add track to playlist: \(error)")
+                }
+            }
         }
     }
     

@@ -70,10 +70,15 @@ struct NSTrackTableView: NSViewRepresentable {
         // Set target/action for double-click
         tableView.target = context.coordinator
         tableView.doubleAction = #selector(Coordinator.doubleClick(_:))
-        
+
         // Enable context menu for rows
         tableView.menu = context.coordinator.createContextMenu()
-        
+
+        // Enable drag support
+        tableView.registerForDraggedTypes([.string])
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
+        tableView.setDraggingSourceOperationMask(.move, forLocal: true)
+
         return scrollView
     }
     
@@ -94,7 +99,8 @@ struct NSTrackTableView: NSViewRepresentable {
                                  old.artist == new.artist &&
                                  old.album == new.album &&
                                  old.genre == new.genre &&
-                                 old.year == new.year
+                                 old.year == new.year &&
+                                 old.isFavorite == new.isFavorite
                              }
 
         // Detect current track change by comparing the path parameter
@@ -115,7 +121,13 @@ struct NSTrackTableView: NSViewRepresentable {
         // Reload if tracks structure, metadata, or current track changed
         if structureChanged || metadataChanged || currentTrackChanged {
             Logger.debug("📊 Reloading table: structureChanged=\(structureChanged), metadataChanged=\(metadataChanged), currentTrackChanged=\(currentTrackChanged)")
-            tableView.reloadData()
+            
+            // Use animation context for smooth reload
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                context.allowsImplicitAnimation = true
+                tableView.reloadData()
+            }
         }
 
         // Update selection - only force it when structure/metadata changed to avoid jumping
@@ -205,6 +217,14 @@ struct NSTrackTableView: NSViewRepresentable {
                 name: .songFeaturesDidUpdate,
                 object: nil
             )
+            
+            // Listen for library data changes (including favorite status) to refresh rows
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(libraryDataDidChange(_:)),
+                name: .libraryDataDidChange,
+                object: nil
+            )
         }
         
         deinit {
@@ -239,6 +259,44 @@ struct NSTrackTableView: NSViewRepresentable {
                     // If no specific track ID, refresh all rows (features might have been batch updated)
                     tableView.reloadData()
                 }
+            }
+        }
+        
+        @objc private func libraryDataDidChange(_ notification: Notification) {
+            // Refresh the affected row(s) when library data changes (e.g., favorite status)
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, let tableView = self.tableView else { return }
+                
+                if let trackId = notification.userInfo?["trackId"] as? Int64 {
+                    // Find the row index and update the track in the array
+                    if let rowIndex = self.tracks.firstIndex(where: { $0.trackId == trackId }) {
+                        // Fetch updated track from database to get latest favorite status
+                        Task {
+                            if let updatedTrack = try? await DatabaseCache.shared.getTrack(by: trackId, forceRefresh: true) {
+                                await MainActor.run {
+                                    // Update the track in the tracks array
+                                    if rowIndex < self.tracks.count {
+                                        self.tracks[rowIndex] = updatedTrack
+                                        
+                                        // Use animation context for smooth reload
+                                        NSAnimationContext.runAnimationGroup { context in
+                                            context.duration = 0.15
+                                            context.allowsImplicitAnimation = true
+                                            
+                                            // Reload the specific row - this will recreate the cells with updated data
+                                            let indexSet = IndexSet(integer: rowIndex)
+                                            tableView.reloadData(forRowIndexes: indexSet, columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns))
+                                            
+                                            // Also invalidate the row height cache to ensure proper display
+                                            tableView.noteHeightOfRows(withIndexesChanged: indexSet)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // Note: We don't reload all rows if no trackId is provided, as that's handled by updateNSView
             }
         }
         
@@ -282,7 +340,18 @@ struct NSTrackTableView: NSViewRepresentable {
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
             return 48 // Match SwiftUI table row height
         }
-        
+
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+            guard row >= 0 && row < tracks.count,
+                  let trackId = tracks[row].trackId else {
+                return nil
+            }
+
+            let pasteboardItem = NSPasteboardItem()
+            pasteboardItem.setString("track:\(trackId)", forType: .string)
+            return pasteboardItem
+        }
+
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard let tableView = notification.object as? NSTableView else { return }
             let selectedRow = tableView.selectedRow

@@ -19,14 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed rounded corners on the right side of artwork in mini player for
   better visual alignment with controls
+- Can now navigate directly between playlists without going back first
 
 ### Added
 
-- (Add new features here)
+- Drag & drop support for adding tracks to playlists and queue directly
+- Long-press favorite button (1 second) to add track to playlist menu
+- List view toggle (normal/compact) for playlist panel with persistent
+  preference
 
 ### Fixed
 
-- (Add bug fixes here)
+- Favorite status now updates immediately in track tables when toggled from
+  any view
 
 ### Improved
 

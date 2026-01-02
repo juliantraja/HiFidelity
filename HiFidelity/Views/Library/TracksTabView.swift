@@ -24,6 +24,9 @@ struct TracksTabView: View {
     @AppStorage("tracksSortField") private var savedSortField: String = "title"
     @AppStorage("tracksSortAscending") private var savedSortAscending: Bool = true
     @State private var viewType: ViewType = .list
+    
+    // Compact view state
+    @AppStorage("tracksCompactView") private var isCompactView: Bool = false
     @State private var selectedTrack: Track.ID?
     @State private var sortOrder: [KeyPathComparator<Track>] = [KeyPathComparator(\Track.title, order: .forward)]
     @State private var selectedFilter: TrackFilter? = nil
@@ -60,7 +63,13 @@ struct TracksTabView: View {
         }
         .onAppear {
             // Restore saved view type
-            viewType = savedViewType == "grid" ? .grid : .list
+            if savedViewType == "compact" {
+                viewType = .list
+                isCompactView = true
+            } else {
+                viewType = savedViewType == "grid" ? .grid : .list
+                isCompactView = false
+            }
             
             // Restore saved sort order
             if let field = TrackSortField.allFields.first(where: { $0.rawValue == savedSortField }) {
@@ -216,25 +225,49 @@ struct TracksTabView: View {
     
     
     private var viewToggle: some View {
-        // View type toggle
+        // View type toggle - 3 buttons: compact (left), normal/list (middle), artwork/grid (right)
+        // The existing button (list.bullet) is used for compact view as requested
         HStack(spacing: 0) {
+            // Compact view button (left) - using the existing list.bullet icon
             Button {
                 viewType = .list
-                savedViewType = "list"
+                isCompactView = true
+                savedViewType = "compact"
             } label: {
                 Image(systemName: "list.bullet")
                     .font(.system(size: 13))
-                    .foregroundColor(viewType == .list ? .white : .primary)
+                    .foregroundColor(isCompactView && viewType == .list ? .white : .primary)
                     .frame(width: 32, height: 28)
                     .background(
-                        viewType == .list ? theme.currentTheme.primaryColor : Color.clear
+                        isCompactView && viewType == .list ? theme.currentTheme.primaryColor : Color.clear
                     )
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .help("Compact View")
             
+            // Normal/list view button (middle) - using rectangle.grid.1x2 to match EntityDetailView
+            Button {
+                viewType = .list
+                isCompactView = false
+                savedViewType = "list"
+            } label: {
+                Image(systemName: "rectangle.grid.1x2")
+                    .font(.system(size: 13))
+                    .foregroundColor(viewType == .list && !isCompactView ? .white : .primary)
+                    .frame(width: 32, height: 28)
+                    .background(
+                        viewType == .list && !isCompactView ? theme.currentTheme.primaryColor : Color.clear
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Normal View")
+            
+            // Artwork/grid view button (right)
             Button {
                 viewType = .grid
+                isCompactView = false
                 savedViewType = "grid"
             } label: {
                 Image(systemName: "square.grid.2x2")
@@ -247,6 +280,7 @@ struct TracksTabView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .help("Artwork View")
         }
         .background(
             RoundedRectangle(cornerRadius: 6)
@@ -260,7 +294,11 @@ struct TracksTabView: View {
     @ViewBuilder
     private var trackContent: some View {
         if viewType == .list {
-            trackListView
+            if isCompactView {
+                compactTrackListView
+            } else {
+                trackListView
+            }
         } else {
             trackGridView
         }
@@ -276,6 +314,86 @@ struct TracksTabView: View {
             onPlayTrack: playTrack,
             isCurrentTrack: isCurrentTrack
         )
+    }
+    
+    // MARK: - Compact List View
+    
+    private var compactTrackListView: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(sortedTracks.enumerated()), id: \.element.id) { index, track in
+                    compactTrackRow(track: track, index: index)
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+    
+    private func compactTrackRow(track: Track, index: Int) -> some View {
+        HStack(spacing: 10) {
+            // Position number
+            Text("\(index + 1)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.6))
+                .frame(width: 20)
+            
+            // Album artwork
+            TrackArtworkView(track: track, size: 40, cornerRadius: 3)
+            
+            // Track info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.title)
+                    .font(.system(size: 12))
+                    .foregroundColor(isCurrentTrack(track) ? theme.currentTheme.primaryColor : .primary)
+                    .lineLimit(1)
+                
+                Text(track.artist)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            
+            Spacer(minLength: 4)
+            
+            // Duration
+            Text(track.formattedDuration)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            playTrack(track)
+        }
+        .contextMenu {
+            TrackContextMenu(
+                track: track,
+                playlistContext: nil
+            )
+        }
+        .onDrag {
+            // Create drag item with track ID
+            if let trackId = track.trackId {
+                return NSItemProvider(object: "track:\(trackId)" as NSString)
+            }
+            return NSItemProvider()
+        } preview: {
+            // Drag preview
+            HStack(spacing: 8) {
+                TrackArtworkView(track: track, size: 32, cornerRadius: 4)
+                Text(track.title)
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .shadow(radius: 4)
+            )
+        }
     }
     
     // MARK: - Grid View

@@ -27,7 +27,7 @@ struct ResponsiveMainLayout: View {
                             selectedTab: $selectedTab,
                             selectedEntity: $selectedEntity
                         )
-                        .frame(width: calculateSidebarWidth(for: geometry.size))
+                        .frame(width: calculatePlaylistSidebarWidth(for: geometry.size))
                         .transition(.asymmetric(
                             insertion: .move(edge: .leading).combined(with: .opacity),
                             removal: .move(edge: .leading).combined(with: .opacity)
@@ -95,6 +95,21 @@ struct ResponsiveMainLayout: View {
         } else {
             let ratio = min((windowWidth - 1600) / 400, 1.0)
             return 350 + (ratio * 30)
+        }
+    }
+    
+    /// Calculate playlist sidebar width based on window size (280-360px) - slightly smaller than right panel
+    private func calculatePlaylistSidebarWidth(for size: CGSize) -> CGFloat {
+        let windowWidth = size.width
+        
+        if windowWidth < 1200 {
+            return 280
+        } else if windowWidth < 1600 {
+            let ratio = (windowWidth - 1200) / 400
+            return 280 + (ratio * 50)
+        } else {
+            let ratio = min((windowWidth - 1600) / 400, 1.0)
+            return 330 + (ratio * 30)
         }
     }
     
