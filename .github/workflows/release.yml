@@ -79,11 +79,7 @@ jobs:
           if [ -z "$CHANGELOG" ]; then
             CHANGELOG="Release version ${VERSION}"
           else
-            CHANGELOG="## What's Changed
-
-${CHANGELOG}
-
-**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
+            CHANGELOG="## What's Changed"$'\n'$'\n'"${CHANGELOG}"$'\n'$'\n'"**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
           fi
           
           # Save to file for multi-line output

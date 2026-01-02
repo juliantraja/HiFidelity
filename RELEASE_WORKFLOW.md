@@ -81,7 +81,10 @@ This creates the zip file and updates the appcast.xml for in-app updates.
 
 This creates a release on GitHub with your zip file attached.
 
-**📝 Tip:** Before creating the release, check `CHANGELOG.md` for all the improvements you've tracked. Copy the relevant version section to use as your changelog.
+**📝 Tip:**
+
+- Before creating the release, check `CHANGELOG.md` for all the improvements you've tracked.
+- Copy the relevant version section to use as your changelog.
 
 ```bash
 ./Scripts/gh-release.sh --version 1.0.10 \
